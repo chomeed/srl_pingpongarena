@@ -26,3 +26,9 @@ Ratings are replayed from the full match history, so deleting a wrong match corr
 4. In Realtime Database → **Rules**, paste the contents of `database.rules.json` and publish.
 
 Without a config the page still works, but saves only on the current device.
+
+## Backups
+Every day a GitHub Action (`Daily backup`) saves all players and matches; each backup is kept for 7 days.
+To restore: Actions → Daily backup → pick a run → download the `backup-YYYY-MM-DD` file, unzip it, then in Firebase
+open Realtime Database → ⋮ (top right of the data view) → **Import JSON** and choose `srl-pingpongarena.json`.
+Importing replaces the current players and matches with the backup.

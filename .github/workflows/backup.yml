@@ -1,0 +1,38 @@
+name: Daily backup
+
+# Saves all players and matches from Firebase every day at 03:13 Singapore time (19:13 UTC)
+# as a downloadable file in the Actions tab. GitHub deletes each backup after 7 days.
+on:
+  schedule:
+    - cron: "13 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DB: https://srl-pingpongarena-default-rtdb.asia-southeast1.firebasedatabase.app
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download database
+        run: |
+          mkdir backup
+          for path in players matches; do
+            curl -sSf "$DB/$path.json" -o "backup/$path.json"
+            jq -e 'type == "object" or . == null' "backup/$path.json" > /dev/null
+          done
+          # one file you can import as-is in Firebase (Realtime Database → ⋮ → Import JSON)
+          jq -n --slurpfile p backup/players.json --slurpfile m backup/matches.json \
+            '{players: ($p[0] // {}), matches: ($m[0] // {})}' > backup/srl-pingpongarena.json
+          players=$(jq '.players | length' backup/srl-pingpongarena.json)
+          matches=$(jq '.matches | length' backup/srl-pingpongarena.json)
+          echo "Backed up $players players and $matches matches." | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "STAMP=$(TZ=Asia/Singapore date +%Y-%m-%d)" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ env.STAMP }}
+          path: backup/srl-pingpongarena.json
+          retention-days: 7

@@ -243,6 +243,8 @@ button.link { font: inherit; font-size: 13px; background: none; border: 0; color
 .chips .empty { grid-column: 1 / -1; margin: 0; }
 .more { margin-top: 10px; }
 details.howto { margin-top: 20px; }
+.howto-video { display: block; width: 100%; max-width: 720px; aspect-ratio: 16 / 9; border-radius: 10px; background: #0f2850; margin: 4px 0 8px; }
+#howtoLink { color: inherit; font-weight: 600; }
 details.howto summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 details.howto summary::-webkit-details-marker { display: none; }
 details.howto summary::after { content: "Read"; font-size: 13px; font-weight: 600; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
@@ -429,7 +431,7 @@ body.sheet-open { overflow: hidden; }
           <button type="button" data-view="d" aria-pressed="false">2v2</button>
         </div>
       </div>
-      <p class="hint">Overall counts every match (2v2 at half weight); the 1v1 and 2v2 tabs count only that format. Everyone starts at 1000. See How scoring works below.</p>
+      <p class="hint">Overall counts every match (2v2 at half weight); the 1v1 and 2v2 tabs count only that format. Everyone starts at 1000. <a href="#howto" id="howtoLink">▶ Watch how scoring works</a> (1 min).</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>#</th><th>Player</th><th class="num">Elo</th><th class="num">W–L</th><th>Last 5</th></tr></thead>
@@ -487,6 +489,9 @@ body.sheet-open { overflow: hidden; }
   <details class="panel howto" id="howto">
     <summary><h2>How scoring works</h2></summary>
     <div class="howto-body">
+      <video class="howto-video" controls playsinline preload="none" poster="media/how-scoring-works.jpg" aria-label="How scoring works, a one-minute video">
+        <source src="media/how-scoring-works.mp4" type="video/mp4">
+      </video>
       <p>Ratings use the <b>Elo system</b>, the same idea chess uses. Everyone starts at <b>1000</b>. When you win you take points from the other side, and how many depends on how surprising the result was.</p>
       <h3>One match</h3>
       <ol>
@@ -1149,6 +1154,12 @@ body.sheet-open { overflow: hidden; }
     render();
     $("confirm").scrollIntoView({ behavior: "smooth", block: "center" });
     toast("Check the result (add a score if you like), then tap Save.");
+  });
+
+  $("howtoLink").addEventListener("click", e => {
+    e.preventDefault();
+    const d = $("howto"); d.open = true; d.scrollIntoView({ behavior: "smooth", block: "start" });
+    const v = d.querySelector("video"); if (v) v.play().catch(() => {});
   });
 
   // ---------- Theme ----------

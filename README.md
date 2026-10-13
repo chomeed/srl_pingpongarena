@@ -9,6 +9,7 @@ Ratings are replayed from the full match history, so deleting a wrong match corr
 - **2v2:** switch to 2v2, tap the two winners then the two losers. Each team's rating is the average of its two players.
 - **Ladders:** *Overall* counts every match, with 2v2 at half weight (K 16); the *1v1* and *2v2* tabs keep format-only ratings at full weight.
 - **Matchmaking:** tap who's at the table to get fair 1v1/2v2 suggestions (even odds, variety, rotation, placements); log the result with two taps.
+- **Video:** a one-minute explainer of the scoring is in How scoring works (`media/how-scoring-works.mp4`; source in `media/video-source/`).
 - **Player pages:** tap a name for rating over time, streaks, best win, head-to-head and 2v2 partners. Each has its own link (`#p-<id>`).
 - **Badges:** 👑 current #1, 🔥 3+ win streak, ⚔️ beat someone rated 100+ higher in the last 7 days.
 - **Voice:** tap **Say result** and say e.g. "Meedeum beat Gwanwoo 11 to 4" or "Hansol and Dohyeon beat Hokyun and Kyoungin".

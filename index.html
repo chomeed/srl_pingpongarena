@@ -119,6 +119,8 @@ details.add summary { cursor: pointer; font-weight: 600; color: var(--table); }
 .mic svg { width: 16px; height: 16px; fill: currentColor; }
 .mic.on { background: var(--ball); border-color: var(--ball); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px var(--ball-soft); } }
+.voicehint { font-size: 13px; color: var(--muted); margin: -4px 0 12px; overflow-wrap: anywhere; }
+.voicehint q { color: var(--ink); font-style: italic; }
 .heard { font-size: 14px; color: var(--muted); margin: -4px 0 12px; font-style: italic; overflow-wrap: anywhere; }
 .headrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
 .headrow .seg { margin-bottom: 0; }
@@ -201,8 +203,9 @@ table.examples { margin: 8px 0 4px; }
         </div>
         <button type="button" class="mic" id="micBtn" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg><span>Say result</span></button>
       </div>
-      <p class="heard" id="heard" hidden></p>
       <p class="hint" id="logHint">Tap the winner, then the loser, then Save.</p>
+      <p class="voicehint" id="voiceHint" hidden></p>
+      <p class="heard" id="heard" hidden></p>
 
       <div class="steps">
         <div class="step win" id="stepWin"><div class="label" id="winLabel">Winner</div><div class="who empty" id="winName">Tap a player</div></div>
@@ -416,6 +419,18 @@ table.examples { margin: 8px 0 4px; }
     }).join("") : '<li class="empty">No matches yet. Log your first game above.</li>';
     $("moreBtn").hidden = recent.length <= showCount;
     renderRoster(st);
+    if (!$("micBtn").hidden) {
+      $("voiceHint").hidden = false;
+      $("voiceHint").innerHTML = `Or tap <b>Say result</b> and say: <q>${esc(voiceExample())}</q>`;
+    }
+  }
+  // A real sentence for the voice hint, built from the current roster.
+  function voiceExample() {
+    const names = players.filter(p => !p.retired).map(p => p.name).sort((a, b) => a.localeCompare(b));
+    const n = names.length;
+    if (size === 2 && n >= 4) return `${names[n - 1]} and ${names[0]} beat ${names[1]} and ${names[n - 2]} 11 to 8`;
+    if (n >= 2) return `${names[n - 1]} beat ${names[0]} 11 to 4`;
+    return size === 2 ? "Hansol and Dohyeon beat Hokyun and Kyoungin 11 to 8" : "Meedeum beat Gwanwoo 11 to 4";
   }
   function renderRoster(st) {
     if (editingId && document.activeElement && document.activeElement.id === "renameInput") return; // don't wipe typing
@@ -557,13 +572,14 @@ table.examples { margin: 8px 0 4px; }
   if (SR && window.VoiceParse) {
     const mic = $("micBtn"), label = mic.querySelector("span");
     mic.hidden = false;
+    render();
     const stop = () => { mic.classList.remove("on"); label.textContent = "Say result"; rec = null; };
     mic.addEventListener("click", () => {
       if (rec) { rec.stop(); return; }
       rec = new SR();
       rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 5; rec.continuous = false;
       mic.classList.add("on"); label.textContent = "Listening…";
-      $("heard").hidden = false; $("heard").textContent = "Say e.g. “Meedeum beat Gwanwoo 11 to 4”";
+      $("heard").hidden = false; $("heard").textContent = `Listening… e.g. “${voiceExample()}”`;
       rec.onresult = e => {
         const r = e.results[e.results.length - 1];
         $("heard").textContent = `“${r[0].transcript}”`;

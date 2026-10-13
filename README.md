@@ -6,6 +6,8 @@ Tap the winner, tap the loser, press **Save result**. Results are shared live th
 Everyone starts at 1000, K-factor 32; fewer than 5 games is provisional (P).
 Ratings are replayed from the full match history, so deleting a wrong match corrects everyone's rating.
 
+- **2v2:** switch to 2v2, tap the two winners then the two losers. Doubles have their own ladder; each player
+  gains or loses points based on the teams' average ratings.
 - **Score is optional** (e.g. 11–7). It is shown in the history but does not change Elo; only the win counts.
 - **Manage players:** rename anyone, or remove them. A player with matches is hidden instead of deleted, so their
   opponents' ratings stay the same; hidden players can be restored.

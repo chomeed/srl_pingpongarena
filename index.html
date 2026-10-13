@@ -109,6 +109,13 @@ button:focus-visible, input:focus-visible, .chip:focus-visible { outline: 3px so
 details.add { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
 details.add summary { cursor: pointer; font-weight: 600; color: var(--table); }
 :root:not([data-theme="light"]) details.add summary { color: var(--ink); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 12px; }
+.seg button { font: inherit; font-weight: 600; font-size: 14px; padding: 7px 16px; background: transparent; color: var(--muted); border: 0; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--table); color: var(--table-ink); }
+.headrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+.headrow .seg { margin-bottom: 0; }
+.tag { font-size: 11px; font-family: var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
 .score { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; font-size: 14px; }
 .score input { width: 4.2em; font: inherit; font-family: var(--mono); padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: center; }
 .score .opt { color: var(--muted); }
@@ -159,7 +166,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   <div class="inner">
     <div>
       <h1>SRL Pingpong<br>Arena<span class="dot"></span></h1>
-      <p class="tagline">Office table-tennis ladder · Elo rated · every 1v1 counts</p>
+      <p class="tagline">Office table-tennis ladder · Elo rated · singles &amp; doubles</p>
     </div>
     <div class="sync" id="sync"><i></i><span>Connecting…</span></div>
   </div>
@@ -169,11 +176,15 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   <div class="grid">
     <section class="panel" aria-labelledby="log-h">
       <h2 id="log-h">Log a match</h2>
-      <p class="hint">Tap the winner, then the loser, then Save.</p>
+      <div class="seg" role="group" aria-label="Match type" id="modeSeg">
+        <button type="button" data-mode="1" aria-pressed="true">1v1</button>
+        <button type="button" data-mode="2" aria-pressed="false">2v2</button>
+      </div>
+      <p class="hint" id="logHint">Tap the winner, then the loser, then Save.</p>
 
       <div class="steps">
-        <div class="step win" id="stepWin"><div class="label">Winner</div><div class="who empty" id="winName">Tap a player</div></div>
-        <div class="step lose" id="stepLose"><div class="label">Loser</div><div class="who empty" id="loseName">—</div></div>
+        <div class="step win" id="stepWin"><div class="label" id="winLabel">Winner</div><div class="who empty" id="winName">Tap a player</div></div>
+        <div class="step lose" id="stepLose"><div class="label" id="loseLabel">Loser</div><div class="who empty" id="loseName">—</div></div>
       </div>
 
       <div class="chips" id="chips"></div>
@@ -203,8 +214,14 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     </section>
 
     <section class="panel" aria-labelledby="lad-h">
-      <h2 id="lad-h">Ladder</h2>
-      <p class="hint">Everyone starts at 1000. K-factor 32. <span class="provisional">(P)</span> = fewer than 5 games.</p>
+      <div class="headrow">
+        <h2 id="lad-h">Ladder</h2>
+        <div class="seg" role="group" aria-label="Ladder" id="viewSeg">
+          <button type="button" data-view="s" aria-pressed="true">Singles</button>
+          <button type="button" data-view="d" aria-pressed="false">Doubles</button>
+        </div>
+      </div>
+      <p class="hint">Everyone starts at 1000 in each ladder. K-factor 32; doubles use the team's average rating. <span class="provisional">(P)</span> = fewer than 5 games.</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>#</th><th>Player</th><th class="num">Elo</th><th class="num">W–L</th><th>Last 5</th></tr></thead>
@@ -230,9 +247,11 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
 (() => {
   const START = 1000, K = 32;
   const $ = id => document.getElementById(id);
-  let players = [];   // {id, name, createdAt}
-  let matches = [];   // {id, winner, loser, at}
-  let pick = { win: null, lose: null };
+  let players = [];   // {id, name, createdAt, retired?}
+  let matches = [];   // {id, winner, loser, winner2?, loser2?, at, winnerScore?, loserScore?}
+  let size = 1;       // 1 = singles, 2 = doubles
+  let view = "s";     // ladder shown: "s" singles, "d" doubles
+  let pick = { win: [], lose: [] };
   let showCount = 15;
   let store = null;   // adapter: {addPlayer, addMatch, deleteMatch, renamePlayer, setRetired, removePlayer}
   let pendingDelete = null;
@@ -241,32 +260,37 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
 
   // ---------- Elo ----------
   const expected = (ra, rb) => 1 / (1 + Math.pow(10, (rb - ra) / 400));
+  const isDoubles = m => !!(m.winner2 && m.loser2);
+  const teams = m => isDoubles(m) ? [[m.winner, m.winner2], [m.loser, m.loser2]] : [[m.winner], [m.loser]];
+  const avg = (ids, st, k) => ids.reduce((t, id) => t + st[id][k].elo, 0) / ids.length;
+  function swing(W, L, st, k) { return Math.round(K * (1 - expected(avg(W, st, k), avg(L, st, k)))); }
   function compute() {
     const st = {};
-    for (const p of players) st[p.id] = { ...p, elo: START, w: 0, l: 0, form: [], last: 0 };
+    const blank = () => ({ elo: START, w: 0, l: 0, form: [] });
     // retired players stay in the replay so their opponents' ratings don't change
+    for (const p of players) st[p.id] = { ...p, s: blank(), d: blank() };
     const deltas = {};
     for (const m of [...matches].sort((a, b) => a.at - b.at)) {
-      const W = st[m.winner], L = st[m.loser];
-      if (!W || !L) continue;
-      const d = Math.round(K * (1 - expected(W.elo, L.elo)));
-      W.elo += d; L.elo -= d; W.w++; L.l++;
-      W.form.push("w"); L.form.push("l"); W.last = d; L.last = -d;
+      const [W, L] = teams(m);
+      if (![...W, ...L].every(id => st[id])) continue;
+      const k = isDoubles(m) ? "d" : "s";
+      const d = swing(W, L, st, k);
+      for (const id of W) { const r = st[id][k]; r.elo += d; r.w++; r.form.push("w"); }
+      for (const id of L) { const r = st[id][k]; r.elo -= d; r.l++; r.form.push("l"); }
       deltas[m.id] = d;
     }
     return { st, deltas };
   }
-  function preview(wid, lid, st) {
-    const W = st[wid], L = st[lid];
-    return Math.round(K * (1 - expected(W.elo, L.elo)));
-  }
 
   // ---------- Render ----------
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const full = () => pick.win.length === size && pick.lose.length === size;
   function render() {
     const { st, deltas } = compute();
     const active = players.filter(p => !p.retired);
-    const ranked = Object.values(st).filter(p => !p.retired).sort((a, b) => b.elo - a.elo || (b.w - b.l) - (a.w - a.l) || a.name.localeCompare(b.name));
+    const mk = size === 2 ? "d" : "s";
+    const nameOf = id => (st[id] ? st[id].name : "?");
+    const team = ids => ids.map(nameOf).join(" & ");
 
     // chips (alphabetical so people find themselves fast)
     const chips = $("chips");
@@ -275,45 +299,57 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
       $("addDetails").open = true;
     } else {
       chips.innerHTML = [...active].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
-        const cls = p.id === pick.win ? "is-win" : p.id === pick.lose ? "is-lose" : "";
-        const dis = pick.win && pick.lose && !cls ? "disabled" : "";
-        return `<button type="button" class="chip ${cls}" data-id="${esc(p.id)}" ${dis}>${esc(p.name)}<small>${st[p.id].elo}</small></button>`;
+        const cls = pick.win.includes(p.id) ? "is-win" : pick.lose.includes(p.id) ? "is-lose" : "";
+        const dis = full() && !cls ? "disabled" : "";
+        return `<button type="button" class="chip ${cls}" data-id="${esc(p.id)}" ${dis}>${esc(p.name)}<small>${st[p.id][mk].elo}</small></button>`;
       }).join("");
     }
 
-    const nameOf = id => (st[id] ? st[id].name : "?");
-    $("winName").textContent = pick.win ? nameOf(pick.win) : "Tap a player";
-    $("winName").classList.toggle("empty", !pick.win);
-    $("loseName").textContent = pick.lose ? nameOf(pick.lose) : (pick.win ? "Now tap the loser" : "—");
-    $("loseName").classList.toggle("empty", !pick.lose);
-    $("stepWin").classList.toggle("filled", !!pick.win);
-    $("stepLose").classList.toggle("filled", !!pick.lose);
-    $("stepWin").classList.toggle("active", !pick.win && active.length > 0);
-    $("stepLose").classList.toggle("active", !!pick.win && !pick.lose);
+    for (const b of $("modeSeg").children) b.setAttribute("aria-pressed", String(Number(b.dataset.mode) === size));
+    $("winLabel").textContent = size === 2 ? "Winners" : "Winner";
+    $("loseLabel").textContent = size === 2 ? "Losers" : "Loser";
+    $("logHint").textContent = size === 2
+      ? "Tap the two winners, then the two losers, then Save."
+      : "Tap the winner, then the loser, then Save.";
+    const wDone = pick.win.length === size;
+    $("winName").textContent = pick.win.length ? team(pick.win) + (wDone ? "" : " & …") : (size === 2 ? "Tap two players" : "Tap a player");
+    $("winName").classList.toggle("empty", !pick.win.length);
+    $("loseName").textContent = pick.lose.length ? team(pick.lose) + (pick.lose.length === size ? "" : " & …")
+      : (wDone ? (size === 2 ? "Now tap the two losers" : "Now tap the loser") : "—");
+    $("loseName").classList.toggle("empty", !pick.lose.length);
+    $("stepWin").classList.toggle("filled", wDone);
+    $("stepLose").classList.toggle("filled", pick.lose.length === size);
+    $("stepWin").classList.toggle("active", !wDone && active.length > 0);
+    $("stepLose").classList.toggle("active", wDone && pick.lose.length < size);
 
-    if (pick.win && pick.lose && st[pick.win] && st[pick.lose]) {
-      const d = preview(pick.win, pick.lose, st);
-      $("confirmText").innerHTML = `<b>${esc(nameOf(pick.win))}</b> beat <b>${esc(nameOf(pick.lose))}</b>`;
-      $("confirmDelta").innerHTML = `<span class="up">${esc(nameOf(pick.win))} +${d}</span> · <span class="down">${esc(nameOf(pick.lose))} −${d}</span>`;
+    if (full() && [...pick.win, ...pick.lose].every(id => st[id])) {
+      const d = swing(pick.win, pick.lose, st, mk);
+      $("confirmText").innerHTML = `<b>${esc(team(pick.win))}</b> beat <b>${esc(team(pick.lose))}</b>`;
+      $("confirmDelta").innerHTML = `<span class="up">${esc(team(pick.win))} +${d}</span> · <span class="down">${esc(team(pick.lose))} −${d}</span>`;
       $("confirm").hidden = false;
     } else {
       $("confirm").hidden = true;
     }
 
     // ladder
+    for (const b of $("viewSeg").children) b.setAttribute("aria-pressed", String(b.dataset.view === view));
+    const ranked = Object.values(st).filter(p => !p.retired)
+      .sort((a, b) => b[view].elo - a[view].elo || (b[view].w - b[view].l) - (a[view].w - a[view].l) || a.name.localeCompare(b.name));
     $("ladder").innerHTML = ranked.length ? ranked.map((p, i) => {
-      const games = p.w + p.l;
-      const form = p.form.slice(-5).map(r => `<b class="${r}" title="${r === "w" ? "Win" : "Loss"}"></b>`).join("");
+      const r = p[view], games = r.w + r.l;
+      const form = r.form.slice(-5).map(x => `<b class="${x}" title="${x === "w" ? "Win" : "Loss"}"></b>`).join("");
       return `<tr class="${i === 0 && games ? "top1" : ""}"><td class="rank">${i + 1}</td>
         <td class="name">${esc(p.name)}${games < 5 ? '<span class="provisional">(P)</span>' : ""}</td>
-        <td class="num elo">${p.elo}</td><td class="num">${p.w}–${p.l}</td><td><span class="form">${form}</span></td></tr>`;
+        <td class="num elo">${r.elo}</td><td class="num">${r.w}–${r.l}</td><td><span class="form">${form}</span></td></tr>`;
     }).join("") : '<tr><td colspan="5" class="empty">The ladder fills in as soon as players are added.</td></tr>';
 
     // history
     const recent = [...matches].sort((a, b) => b.at - a.at);
     $("log").innerHTML = recent.length ? recent.slice(0, showCount).map(m => {
+      const [W, L] = teams(m);
       const confirming = pendingDelete === m.id;
-      return `<li><span class="m"><span class="w">${esc(nameOf(m.winner))}</span> beat <span class="l">${esc(nameOf(m.loser))}</span>
+      return `<li><span class="m"><span class="w">${esc(team(W))}</span> beat <span class="l">${esc(team(L))}</span>
+        ${isDoubles(m) ? '<span class="tag">2v2</span>' : ""}
         ${m.winnerScore != null ? `<span class="sc">${m.winnerScore}–${m.loserScore}</span>` : ""}
         <span class="delta">±${deltas[m.id] ?? "–"}</span></span>
         <span><time>${fmt(m.at)}</time> ${confirming
@@ -326,7 +362,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   function renderRoster(st) {
     if (editingId && document.activeElement && document.activeElement.id === "renameInput") return; // don't wipe typing
     const row = p => {
-      const games = st[p.id].w + st[p.id].l;
+      const r = st[p.id], games = r.s.w + r.s.l + r.d.w + r.d.l;
       if (editingId === p.id) return `<li><form class="addform" id="renameForm" style="margin:0;width:100%">
           <input id="renameInput" maxlength="32" value="${esc(p.name)}" aria-label="New name for ${esc(p.name)}" required>
           <button class="primary" type="submit">Save</button><button class="ghost" type="button" data-act="cancel">Cancel</button></form></li>`;
@@ -335,9 +371,9 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
           <span class="note">${games
             ? `${esc(p.name)} has ${games} match${games > 1 ? "es" : ""}. They'll be hidden from the ladder, but their matches stay so other players' ratings don't change. You can restore them later.`
             : `${esc(p.name)} has no matches and will be removed.`}</span></li>`;
-      if (p.retired) return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].elo} · ${games} game${games === 1 ? "" : "s"}</small></span>
+      if (p.retired) return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].s.elo} · ${games} game${games === 1 ? "" : "s"}</small></span>
           <span class="acts"><button class="link plain" data-act="restore" data-id="${esc(p.id)}">Restore</button></span></li>`;
-      return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].elo}</small></span>
+      return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].s.elo}${st[p.id].d.w + st[p.id].d.l ? ` · 2v2 ${st[p.id].d.elo}` : ""}</small></span>
           <span class="acts"><button class="link plain" data-act="rename" data-id="${esc(p.id)}">Rename</button><button class="link" data-act="remove" data-id="${esc(p.id)}">Remove</button></span></li>`;
     };
     const byName = (a, b) => a.name.localeCompare(b.name);
@@ -360,20 +396,31 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   function setSync(cls, text) { const s = $("sync"); s.className = "sync " + cls; s.lastElementChild.textContent = text; }
 
   // ---------- Interaction ----------
+  const clearPick = () => { pick = { win: [], lose: [] }; $("scoreW").value = ""; $("scoreL").value = ""; };
   $("chips").addEventListener("click", e => {
     const b = e.target.closest(".chip"); if (!b || b.disabled) return;
     const id = b.dataset.id;
-    if (pick.win === id) pick = { win: null, lose: null };
-    else if (pick.lose === id) pick.lose = null;
-    else if (!pick.win) pick.win = id;
-    else if (!pick.lose) pick.lose = id;
+    if (pick.win.includes(id)) pick.win = pick.win.filter(x => x !== id);
+    else if (pick.lose.includes(id)) pick.lose = pick.lose.filter(x => x !== id);
+    else if (pick.win.length < size) pick.win.push(id);
+    else if (pick.lose.length < size) pick.lose.push(id);
     render();
   });
-  $("resetBtn").addEventListener("click", () => { pick = { win: null, lose: null }; $("scoreW").value = ""; $("scoreL").value = ""; render(); });
+  $("modeSeg").addEventListener("click", e => {
+    const b = e.target.closest("button[data-mode]"); if (!b) return;
+    const n = Number(b.dataset.mode); if (n === size) return;
+    size = n; view = n === 2 ? "d" : "s"; clearPick(); render();
+  });
+  $("viewSeg").addEventListener("click", e => {
+    const b = e.target.closest("button[data-view]"); if (!b) return;
+    view = b.dataset.view; render();
+  });
+  $("resetBtn").addEventListener("click", () => { clearPick(); render(); });
   $("saveBtn").addEventListener("click", async () => {
-    if (!pick.win || !pick.lose || !store) return;
+    if (!full() || !store) return;
     const ws = $("scoreW").value.trim(), ls = $("scoreL").value.trim();
-    const match = { winner: pick.win, loser: pick.lose, at: Date.now() };
+    const match = { winner: pick.win[0], loser: pick.lose[0], at: Date.now() };
+    if (size === 2) { match.winner2 = pick.win[1]; match.loser2 = pick.lose[1]; }
     if (ws !== "" || ls !== "") {
       const w = Number(ws), l = Number(ls);
       const ok = n => Number.isInteger(n) && n >= 0 && n <= 99;
@@ -384,8 +431,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     const btn = $("saveBtn"); btn.disabled = true;
     try {
       await store.addMatch(match);
-      pick = { win: null, lose: null };
-      $("scoreW").value = ""; $("scoreL").value = "";
+      clearPick();
       toast("Saved. Ratings updated.");
     } catch (err) { toast(errMsg(err), true); }
     btn.disabled = false; render();
@@ -420,8 +466,8 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     try {
       if (a === "remove-yes") {
         pendingRemove = null;
-        if (pick.win === id || pick.lose === id) pick = { win: null, lose: null };
-        const played = matches.some(m => m.winner === id || m.loser === id);
+        if (pick.win.includes(id) || pick.lose.includes(id)) clearPick();
+        const played = matches.some(m => [m.winner, m.loser, m.winner2, m.loser2].includes(id));
         if (played) { await store.setRetired(id, true); toast(`${p.name} is hidden from the ladder.`); }
         else { await store.removePlayer(id); toast(`${p.name} was removed.`); }
       } else if (a === "restore") { await store.setRetired(id, false); toast(`${p.name} is back on the ladder.`); }

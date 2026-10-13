@@ -49,6 +49,20 @@
           ".validate": false
         }
       }
+    },
+    "announce": {
+      ".read": true,
+      "requestedAt": {
+        ".write": "!data.exists() || now - data.val() > 600000",
+        ".validate": "newData.isNumber() && newData.val() <= now && newData.val() > now - 60000"
+      },
+      "postedAt": {
+        ".write": true,
+        ".validate": "newData.isNumber() && newData.val() <= now && newData.val() > now - 60000 && (!data.exists() || newData.val() >= data.val())"
+      },
+      "$other": {
+        ".validate": false
+      }
     }
   }
 }

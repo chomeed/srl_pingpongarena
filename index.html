@@ -124,9 +124,10 @@ details.add summary { cursor: pointer; font-weight: 600; color: var(--table); }
 .heard { font-size: 14px; color: var(--muted); margin: -4px 0 12px; font-style: italic; overflow-wrap: anywhere; }
 .slackline { margin: 14px 0 0; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--muted); }
 .slackline span { min-width: 0; }
-a.ghostlink { font-weight: 600; font-size: 14px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; white-space: nowrap; }
-a.ghostlink:hover { border-color: var(--table); }
-a.ghostlink:focus-visible { outline: 3px solid var(--ball); outline-offset: 2px; }
+.ghostlink { font: inherit; background: transparent; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; white-space: nowrap; }
+.slackline a.quiet { color: var(--muted); }
+.ghostlink:hover { border-color: var(--table); }
+.ghostlink:focus-visible { outline: 3px solid var(--ball); outline-offset: 2px; }
 .headrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
 .headrow .seg { margin-bottom: 0; }
 .tag { font-size: 11px; font-family: var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
@@ -259,8 +260,9 @@ table.examples { margin: 8px 0 4px; }
           <tbody id="ladder"></tbody>
         </table>
       </div>
-      <p class="slackline"><a class="ghostlink" href="https://github.com/chomeed/srl_pingpongarena/actions/workflows/slack-leaderboard.yml" target="_blank" rel="noopener">Post ladder to Slack ↗</a>
-        <span>Opens GitHub: tap <b>Run workflow</b>. Needs access to the repo. Also posts automatically every Monday.</span></p>
+      <p class="slackline"><button type="button" class="ghostlink" id="announceBtn">Announce in Slack</button>
+        <span id="announceStatus">Posts the ladder to Slack within about 10 minutes. It also posts automatically every Monday.</span>
+        <a class="quiet" href="https://github.com/chomeed/srl_pingpongarena/actions/workflows/slack-leaderboard.yml" target="_blank" rel="noopener">Post now on GitHub ↗</a></p>
     </section>
   </div>
 
@@ -323,6 +325,7 @@ table.examples { margin: 8px 0 4px; }
   let pendingDelete = null;
   let pendingRemove = null; // player id awaiting remove confirmation
   let editingId = null;     // player id being renamed
+  let announce = null;      // {requestedAt, postedAt} from the database; null when not connected
 
   // ---------- Elo ----------
   const expected = (ra, rb) => 1 / (1 + Math.pow(10, (rb - ra) / 400));
@@ -612,6 +615,30 @@ table.examples { margin: 8px 0 4px; }
     });
   }
 
+  // ---------- Slack announce ----------
+  // The page queues a request; a GitHub Action checks every 5 minutes and posts the ladder.
+  const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : fmt(t); };
+  function renderAnnounce() {
+    const btn = $("announceBtn"), st = $("announceStatus");
+    if (!announce) { btn.disabled = true; st.textContent = "Available when connected to the shared database."; return; }
+    const { requestedAt: req, postedAt: post } = announce;
+    const queued = req && (!post || req > post);
+    btn.disabled = !!queued;
+    btn.textContent = queued ? "Queued for Slack" : "Announce in Slack";
+    st.textContent = queued ? `Requested ${ago(req)}. Posts within about 10 minutes.`
+      : post ? `Last posted ${ago(post)}. Also posts automatically every Monday.`
+      : "Posts the ladder to Slack within about 10 minutes. It also posts automatically every Monday.";
+  }
+  $("announceBtn").addEventListener("click", async () => {
+    if (!store || !store.announce) return;
+    try { await store.announce(); toast("Queued. The ladder will appear in Slack within about 10 minutes."); }
+    catch (err) {
+      toast(/permission/i.test((err && (err.code || err.message)) || "")
+        ? "The ladder was announced less than 10 minutes ago. Try again a bit later." : errMsg(err), true);
+    }
+  });
+  setInterval(() => announce && renderAnnounce(), 60000);
+
   // ---------- Storage ----------
   function localStore() {
     const KEY = "srl-pingpong-v1";
@@ -637,6 +664,7 @@ table.examples { margin: 8px 0 4px; }
     if (!window.firebase || !cfg || !cfg.projectId || /^REPLACE/.test(cfg.projectId)) {
       store = localStore();
       setSync("local", "Not connected to Firebase · this device only");
+      renderAnnounce();
       return;
     }
     firebase.initializeApp(cfg);
@@ -651,6 +679,8 @@ table.examples { margin: 8px 0 4px; }
     };
     const list = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
     const onErr = () => setSync("", "Can't read results – check the database rules");
+    store.announce = () => db.ref("announce/requestedAt").set(firebase.database.ServerValue.TIMESTAMP);
+    db.ref("announce").on("value", s => { announce = s.val() || {}; renderAnnounce(); });
     db.ref(".info/connected").on("value", s => setSync(s.val() ? "live" : "", s.val() ? "Live · shared" : "Offline – reconnecting"));
     db.ref("players").on("value", s => { players = list(s).filter(p => p.name); render(); }, onErr);
     db.ref("matches").on("value", s => { matches = list(s).filter(m => m.winner && m.loser); render(); }, onErr);

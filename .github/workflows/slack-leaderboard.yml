@@ -1,30 +1,48 @@
 name: Slack leaderboard
 
-# Posts the ladder to Slack every Monday at 08:50 Singapore time (00:50 UTC), or on demand from the Actions tab.
+# Posts the ladder to Slack:
+#  - every Monday at 08:50 Singapore time (00:50 UTC)
+#  - when someone presses "Announce in Slack" on the site (checked every 5 minutes)
+#  - on demand from the Actions tab
 # Needs the repository secret SLACK_WEBHOOK_URL (a Slack Incoming Webhook for the channel).
-# Without it, the ladder is still shown in the run's summary.
 on:
   schedule:
     - cron: "50 0 * * 1"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  DB: https://srl-pingpongarena-default-rtdb.asia-southeast1.firebasedatabase.app
+
 jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check for a request from the site
+        id: check
+        run: |
+          if [ "${{ github.event.schedule }}" != "*/5 * * * *" ]; then echo "post=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          a=$(curl -sSf "$DB/announce.json")
+          echo "announce: $a"
+          post=$(echo "${a:-null}" | jq -r 'if . == null or .requestedAt == null then "false" elif .postedAt == null or .requestedAt > .postedAt then "true" else "false" end')
+          echo "post=$post" >> "$GITHUB_OUTPUT"
+      - if: steps.check.outputs.post == 'true'
+        uses: actions/checkout@v4
+      - if: steps.check.outputs.post == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Build ladder
+        if: steps.check.outputs.post == 'true'
         run: |
           node .claude/skills/leaderboard/leaderboard.mjs --recent 5 | tee ladder.txt
           node .claude/skills/leaderboard/leaderboard.mjs --slack --recent 3 > slack.json
           { echo '```'; cat ladder.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Post to Slack
+        if: steps.check.outputs.post == 'true'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
@@ -33,3 +51,4 @@ jobs:
             exit 0
           fi
           curl -sSf -X POST -H 'Content-Type: application/json' --data @slack.json "$SLACK_WEBHOOK_URL"
+          curl -sSf -X PUT --data '{".sv":"timestamp"}' "$DB/announce/postedAt.json"

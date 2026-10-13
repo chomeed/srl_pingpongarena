@@ -30,15 +30,25 @@ for (const m of matches) {
     const avg = ids => ids.reduce((t, id) => t + st[id][k].elo, 0) / ids.length;
     const kf = k === "o" && isDoubles(m) ? K / 2 : K; // 2v2 counts half in Overall
     const d = Math.round(kf * (1 - 1 / (1 + 10 ** ((avg(L) - avg(W)) / 400))));
-    for (const id of W) { const r = st[id][k]; r.elo += d; r.w++; r.form += "W"; }
-    for (const id of L) { const r = st[id][k]; r.elo -= d; r.l++; r.form += "L"; }
+    const boost = r => (r.w + r.l < 10 ? 2 : 1); // first 10 games count double for that player
+    for (const id of W) { const r = st[id][k]; r.elo += d * boost(r); r.w++; r.form += "W"; }
+    for (const id of L) { const r = st[id][k]; r.elo -= d * boost(r); r.l++; r.form += "L"; }
     if (k === "o") m.delta = d;
   }
 }
 const rank = k => Object.values(st).filter(p => !p.retired)
   .sort((a, b) => b[k].elo - a[k].elo || (b[k].w - b[k].l) - (a[k].w - a[k].l) || a.name.localeCompare(b.name))
   .map((p, i) => ({ rank: i + 1, name: p.name, elo: p[k].elo, wins: p[k].w, losses: p[k].l, last5: p[k].form.slice(-5), provisional: p[k].w + p[k].l < 5 }));
-const ladder = rank("o");
+// League-style tiers; must match index.html
+const PLACEMENTS = 5, APEX = ["Challenger", "Grandmaster", "Master"];
+const TIERS = [[1125, "Diamond"], [1075, "Emerald"], [1025, "Platinum"], [975, "Gold"], [925, "Silver"], [875, "Bronze"], [-Infinity, "Iron"]];
+const withTiers = list => { let place = 0; return list.map(p => {
+  const games = p.wins + p.losses;
+  const tier = games < PLACEMENTS ? `Placement ${games}/${PLACEMENTS}`
+    : place < APEX.length && p.elo >= 1025 ? APEX[place++] : (place++, TIERS.find(([min]) => p.elo >= min)[1]);
+  return { ...p, tier };
+}); };
+const ladder = withTiers(rank("o"));
 const team = ids => ids.map(id => st[id].name).join(" & ");
 const recent = matches.slice(-recentN).reverse().map(m => ({
   winner: team(teams(m)[0]), loser: team(teams(m)[1]), doubles: isDoubles(m), delta: m.delta,
@@ -50,7 +60,7 @@ if (args.includes("--slack")) {
   const site = "https://chomeed.github.io/srl_pingpongarena/";
   const medal = r => ["🥇", "🥈", "🥉"][r - 1] || `${r}.`;
   const lines = ladder.length
-    ? ladder.map(p => `${medal(p.rank)} *${p.name}*${p.provisional ? " _(P)_" : ""} · ${p.elo} · ${p.wins}–${p.losses}`)
+    ? ladder.map(p => `${medal(p.rank)} *${p.name}* · ${p.tier} · ${p.elo} · ${p.wins}–${p.losses}`)
     : ["No players on the ladder yet."];
   let text = `🏓 *SRL PingpongArena ladder* (${matches.length} matches)\n` + lines.join("\n");
   if (recentN && recent.length) text += "\n\n*Recent:* " + recent.map(m => `${m.winner} beat ${m.loser}${m.doubles ? " (2v2)" : ""}${m.score ? ` ${m.score}` : ""}`).join(" · ");
@@ -58,13 +68,12 @@ if (args.includes("--slack")) {
   console.log(JSON.stringify({ text }));
   process.exit(0);
 }
-if (asJson) { console.log(JSON.stringify({ ladder, singles: rank("s"), doubles: rank("d"), recent: recentN ? recent : undefined, matches: matches.length }, null, 2)); process.exit(0); }
+if (asJson) { console.log(JSON.stringify({ ladder, singles: withTiers(rank("s")), doubles: withTiers(rank("d")), recent: recentN ? recent : undefined, matches: matches.length }, null, 2)); process.exit(0); }
 if (!ladder.length) { console.log("No players on the ladder yet."); process.exit(0); }
 const w = Math.max(6, ...ladder.map(p => p.name.length + 1));
 console.log(`SRL PingpongArena · ${ladder.length} players · ${matches.length} matches\n`);
-console.log(`${"#".padStart(2)}  ${"Player".padEnd(w)}  ${"Elo".padStart(4)}  ${"W-L".padStart(5)}  Last 5`);
-for (const p of ladder) console.log(`${String(p.rank).padStart(2)}  ${(p.name + (p.provisional ? "*" : "")).padEnd(w)}  ${String(p.elo).padStart(4)}  ${`${p.wins}-${p.losses}`.padStart(5)}  ${p.last5}`);
-console.log("\n* provisional (fewer than 5 games)");
+console.log(`${"#".padStart(2)}  ${"Player".padEnd(w)}  ${"Tier".padEnd(15)}  ${"Elo".padStart(4)}  ${"W-L".padStart(5)}  Last 5`);
+for (const p of ladder) console.log(`${String(p.rank).padStart(2)}  ${p.name.padEnd(w)}  ${p.tier.padEnd(15)}  ${String(p.elo).padStart(4)}  ${`${p.wins}-${p.losses}`.padStart(5)}  ${p.last5}`);
 if (recentN && recent.length) {
   console.log("\nRecent matches:");
   for (const m of recent) console.log(`  ${m.winner} beat ${m.loser}${m.doubles ? " (2v2)" : ""}${m.score ? ` ${m.score}` : ""} (±${m.delta}) · ${m.at.slice(0, 16).replace("T", " ")} UTC`);

@@ -133,8 +133,6 @@ ol.log .w { color: var(--win); font-weight: 600; } ol.log .l { color: var(--loss
 ol.log time { font-size: 13px; color: var(--muted); font-family: var(--mono); }
 button.link { font: inherit; font-size: 13px; background: none; border: 0; color: var(--loss); cursor: pointer; padding: 0 4px; text-decoration: underline; }
 .empty { color: var(--muted); padding: 14px 0; }
-.pending { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ball); font-weight: 600; margin-left: 6px; }
-footer a { color: inherit; }
 .more { margin-top: 10px; }
 footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -154,7 +152,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   <div class="grid">
     <section class="panel" aria-labelledby="log-h">
       <h2 id="log-h">Log a match</h2>
-      <p class="hint">Tap the winner, then the loser, then Save. GitHub opens with the result filled in: press <b>Create</b> and the ladder updates in about a minute.</p>
+      <p class="hint">Tap the winner, then the loser, then Save.</p>
 
       <div class="steps">
         <div class="step win" id="stepWin"><div class="label">Winner</div><div class="who empty" id="winName">Tap a player</div></div>
@@ -167,7 +165,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
         <p><span id="confirmText"></span><br><span class="delta" id="confirmDelta"></span></p>
         <div class="btns">
           <button class="ghost" id="resetBtn" type="button">Clear</button>
-          <button class="primary" id="saveBtn" type="button">Save on GitHub</button>
+          <button class="primary" id="saveBtn" type="button">Save result</button>
         </div>
       </div>
       <div class="toast" id="toast" role="status"></div>
@@ -176,7 +174,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
         <summary>Add a player</summary>
         <form class="addform" id="addForm">
           <input id="newName" name="newName" maxlength="32" placeholder="Name" autocomplete="off" required>
-          <button class="primary" type="submit">Add on GitHub</button>
+          <button class="primary" type="submit">Add</button>
         </form>
       </details>
     </section>
@@ -199,120 +197,101 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     <div class="more"><button class="ghost" id="moreBtn" type="button" hidden>Show more</button></div>
   </section>
 
-  <footer>Results are stored in <a id="dataLink" href="#">data.json</a> on GitHub and logged by a bot from GitHub issues. Ratings are recomputed from the full match history, so deleting a match fixes everyone's rating.</footer>
+  <footer>Ratings are recomputed from the full match history, so deleting a match fixes everyone's rating.</footer>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script>
 (() => {
   const START = 1000, K = 32;
-  // Repo that stores data.json and receives the result issues.
-  const REPO = (() => {
-    const h = location.hostname.match(/^([^.]+)\.github\.io$/);
-    const seg = location.pathname.split("/").filter(Boolean)[0];
-    return h && seg ? `${h[1]}/${seg}` : "chomeed/srl_pingpongarena";
-  })();
-  const PENDING_KEY = "srl-pingpong-pending-v1";
-  const PENDING_TTL = 30 * 60 * 1000;
   const $ = id => document.getElementById(id);
-
-  let players = [];   // {name, addedAt}
-  let matches = [];   // {id, winner, loser, at, by, issue}
-  let pending = loadPending(); // {type, id, ...} not yet in data.json
+  let players = [];   // {id, name, createdAt}
+  let matches = [];   // {id, winner, loser, at}
   let pick = { win: null, lose: null };
   let showCount = 15;
+  let store = null;   // adapter: {addPlayer, addMatch, deleteMatch}
   let pendingDelete = null;
-  let loaded = false;
-
-  // ---------- Pending (submitted on GitHub, not yet recorded) ----------
-  function loadPending() {
-    try { return (JSON.parse(localStorage.getItem(PENDING_KEY)) || []).filter(p => Date.now() - p.sent < PENDING_TTL); }
-    catch (_) { return []; }
-  }
-  function savePending() { try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch (_) {} }
-  function prunePending() {
-    const ids = new Set(matches.map(m => m.id));
-    const names = new Set(players.map(p => p.name.toLowerCase()));
-    pending = pending.filter(p => Date.now() - p.sent < PENDING_TTL && !(
-      (p.type === "match" && ids.has(p.id)) ||
-      (p.type === "player" && names.has(p.name.toLowerCase())) ||
-      (p.type === "delete" && !ids.has(p.id))));
-    savePending();
-  }
 
   // ---------- Elo ----------
-  const key = n => n.toLowerCase();
   const expected = (ra, rb) => 1 / (1 + Math.pow(10, (rb - ra) / 400));
   function compute() {
     const st = {};
-    const allPlayers = [...players, ...pending.filter(p => p.type === "player").map(p => ({ name: p.name, pending: true }))];
-    for (const p of allPlayers) if (!st[key(p.name)]) st[key(p.name)] = { ...p, elo: START, w: 0, l: 0, form: [] };
-    const deleted = new Set(pending.filter(p => p.type === "delete").map(p => p.id));
-    const all = [...matches, ...pending.filter(p => p.type === "match").map(p => ({ ...p, at: p.sent, pending: true }))]
-      .filter(m => !deleted.has(m.id)).sort((a, b) => a.at - b.at);
+    for (const p of players) st[p.id] = { ...p, elo: START, w: 0, l: 0, form: [], last: 0 };
     const deltas = {};
-    for (const m of all) {
-      const W = st[key(m.winner)], L = st[key(m.loser)];
+    for (const m of [...matches].sort((a, b) => a.at - b.at)) {
+      const W = st[m.winner], L = st[m.loser];
       if (!W || !L) continue;
       const d = Math.round(K * (1 - expected(W.elo, L.elo)));
-      W.elo += d; L.elo -= d; W.w++; L.l++; W.form.push("w"); L.form.push("l");
+      W.elo += d; L.elo -= d; W.w++; L.l++;
+      W.form.push("w"); L.form.push("l"); W.last = d; L.last = -d;
       deltas[m.id] = d;
     }
-    return { st, deltas, all };
+    return { st, deltas };
+  }
+  function preview(wid, lid, st) {
+    const W = st[wid], L = st[lid];
+    return Math.round(K * (1 - expected(W.elo, L.elo)));
   }
 
   // ---------- Render ----------
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   function render() {
-    const { st, deltas, all } = compute();
-    const list = Object.values(st);
-    const ranked = [...list].sort((a, b) => b.elo - a.elo || (b.w - b.l) - (a.w - a.l) || a.name.localeCompare(b.name));
+    const { st, deltas } = compute();
+    const ranked = Object.values(st).sort((a, b) => b.elo - a.elo || (b.w - b.l) - (a.w - a.l) || a.name.localeCompare(b.name));
 
+    // chips (alphabetical so people find themselves fast)
     const chips = $("chips");
-    if (!loaded) chips.innerHTML = '<p class="empty">Loading the ladder…</p>';
-    else if (!list.length) { chips.innerHTML = '<p class="empty">No players yet. Add the first players below to start the ladder.</p>'; $("addDetails").open = true; }
-    else chips.innerHTML = [...list].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
-      const k = key(p.name);
-      const cls = k === pick.win ? "is-win" : k === pick.lose ? "is-lose" : "";
-      const dis = (pick.win && pick.lose && !cls) || p.pending ? "disabled" : "";
-      return `<button type="button" class="chip ${cls}" data-id="${esc(k)}" ${dis}>${esc(p.name)}<small>${p.pending ? "pending" : p.elo}</small></button>`;
-    }).join("");
+    if (!players.length) {
+      chips.innerHTML = '<p class="empty">No players yet. Add the first players below to start the ladder.</p>';
+      $("addDetails").open = true;
+    } else {
+      chips.innerHTML = [...players].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
+        const cls = p.id === pick.win ? "is-win" : p.id === pick.lose ? "is-lose" : "";
+        const dis = pick.win && pick.lose && !cls ? "disabled" : "";
+        return `<button type="button" class="chip ${cls}" data-id="${esc(p.id)}" ${dis}>${esc(p.name)}<small>${st[p.id].elo}</small></button>`;
+      }).join("");
+    }
 
-    const nameOf = k => (st[k] ? st[k].name : "?");
+    const nameOf = id => (st[id] ? st[id].name : "?");
     $("winName").textContent = pick.win ? nameOf(pick.win) : "Tap a player";
     $("winName").classList.toggle("empty", !pick.win);
     $("loseName").textContent = pick.lose ? nameOf(pick.lose) : (pick.win ? "Now tap the loser" : "—");
     $("loseName").classList.toggle("empty", !pick.lose);
     $("stepWin").classList.toggle("filled", !!pick.win);
     $("stepLose").classList.toggle("filled", !!pick.lose);
-    $("stepWin").classList.toggle("active", !pick.win && list.length > 0);
+    $("stepWin").classList.toggle("active", !pick.win && players.length > 0);
     $("stepLose").classList.toggle("active", !!pick.win && !pick.lose);
 
     if (pick.win && pick.lose && st[pick.win] && st[pick.lose]) {
-      const d = Math.round(K * (1 - expected(st[pick.win].elo, st[pick.lose].elo)));
+      const d = preview(pick.win, pick.lose, st);
       $("confirmText").innerHTML = `<b>${esc(nameOf(pick.win))}</b> beat <b>${esc(nameOf(pick.lose))}</b>`;
       $("confirmDelta").innerHTML = `<span class="up">${esc(nameOf(pick.win))} +${d}</span> · <span class="down">${esc(nameOf(pick.lose))} −${d}</span>`;
       $("confirm").hidden = false;
-    } else $("confirm").hidden = true;
+    } else {
+      $("confirm").hidden = true;
+    }
 
+    // ladder
     $("ladder").innerHTML = ranked.length ? ranked.map((p, i) => {
       const games = p.w + p.l;
       const form = p.form.slice(-5).map(r => `<b class="${r}" title="${r === "w" ? "Win" : "Loss"}"></b>`).join("");
       return `<tr class="${i === 0 && games ? "top1" : ""}"><td class="rank">${i + 1}</td>
-        <td class="name">${esc(p.name)}${p.pending ? '<span class="pending">pending</span>' : games < 5 ? '<span class="provisional">(P)</span>' : ""}</td>
+        <td class="name">${esc(p.name)}${games < 5 ? '<span class="provisional">(P)</span>' : ""}</td>
         <td class="num elo">${p.elo}</td><td class="num">${p.w}–${p.l}</td><td><span class="form">${form}</span></td></tr>`;
-    }).join("") : `<tr><td colspan="5" class="empty">${loaded ? "The ladder fills in as soon as players are added." : "Loading…"}</td></tr>`;
+    }).join("") : '<tr><td colspan="5" class="empty">The ladder fills in as soon as players are added.</td></tr>';
 
-    const recent = [...all].reverse();
-    const deleting = new Set(pending.filter(p => p.type === "delete").map(p => p.id));
+    // history
+    const recent = [...matches].sort((a, b) => b.at - a.at);
     $("log").innerHTML = recent.length ? recent.slice(0, showCount).map(m => {
       const confirming = pendingDelete === m.id;
-      const action = m.pending ? '<span class="pending">pending</span>'
-        : deleting.has(m.id) ? '<span class="pending">deleting</span>'
-        : confirming ? `<button class="link" data-del="${esc(m.id)}" data-sure="1">Confirm delete</button><button class="link" data-cancel="1" style="color:var(--muted)">Keep</button>`
-        : `<button class="link" data-del="${esc(m.id)}">Delete</button>`;
-      return `<li><span class="m"><span class="w">${esc(m.winner)}</span> beat <span class="l">${esc(m.loser)}</span>
-        <span class="delta">±${deltas[m.id] ?? "–"}</span></span><span><time>${fmt(m.at)}</time> ${action}</span></li>`;
-    }).join("") : `<li class="empty">${loaded ? "No matches yet. Log your first game above." : "Loading…"}</li>`;
+      return `<li><span class="m"><span class="w">${esc(nameOf(m.winner))}</span> beat <span class="l">${esc(nameOf(m.loser))}</span>
+        <span class="delta">±${deltas[m.id] ?? "–"}</span></span>
+        <span><time>${fmt(m.at)}</time> ${confirming
+          ? `<button class="link" data-del="${esc(m.id)}" data-sure="1">Confirm delete</button><button class="link" data-cancel="1" style="color:var(--muted)">Keep</button>`
+          : `<button class="link" data-del="${esc(m.id)}">Delete</button>`}</span></li>`;
+    }).join("") : '<li class="empty">No matches yet. Log your first game above.</li>';
     $("moreBtn").hidden = recent.length <= showCount;
   }
   function fmt(t) {
@@ -324,20 +303,9 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   let toastTimer;
   function toast(msg, err) {
     const t = $("toast"); t.textContent = msg; t.classList.toggle("err", !!err);
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.textContent = ""), 8000);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.textContent = ""), 4000);
   }
   function setSync(cls, text) { const s = $("sync"); s.className = "sync " + cls; s.lastElementChild.textContent = text; }
-
-  // ---------- GitHub issue hand-off ----------
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  function openIssue(cmd, title, summary) {
-    const body = `<!-- arena:${JSON.stringify(cmd)} -->\n${summary}\n\nLogged from SRL PingpongArena. Press **Create** to record it; a bot adds it to the ladder and closes this issue.`;
-    const url = `https://github.com/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-    const a = document.createElement("a");
-    a.href = url; a.target = "_blank"; a.rel = "noopener";
-    document.body.appendChild(a); a.click(); a.remove();
-    pending.push({ ...cmd, sent: Date.now() }); savePending();
-  }
 
   // ---------- Interaction ----------
   $("chips").addEventListener("click", e => {
@@ -350,61 +318,84 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     render();
   });
   $("resetBtn").addEventListener("click", () => { pick = { win: null, lose: null }; render(); });
-  $("saveBtn").addEventListener("click", () => {
-    const { st } = compute();
-    const W = st[pick.win], L = st[pick.lose];
-    if (!W || !L) return;
-    openIssue({ type: "match", id: "m_" + uid(), winner: W.name, loser: L.name },
-      `Match: ${W.name} beat ${L.name}`, `**${W.name}** beat **${L.name}**`);
-    pick = { win: null, lose: null };
-    toast("GitHub opened in a new tab. Press Create there to record the result.");
-    render();
+  $("saveBtn").addEventListener("click", async () => {
+    if (!pick.win || !pick.lose || !store) return;
+    const btn = $("saveBtn"); btn.disabled = true;
+    try {
+      await store.addMatch({ winner: pick.win, loser: pick.lose, at: Date.now() });
+      pick = { win: null, lose: null };
+      toast("Saved. Ratings updated.");
+    } catch (err) { toast(errMsg(err), true); }
+    btn.disabled = false; render();
   });
-  $("addForm").addEventListener("submit", e => {
+  $("addForm").addEventListener("submit", async e => {
     e.preventDefault();
     const name = $("newName").value.trim().replace(/\s+/g, " ");
-    if (!name) return;
-    if (compute().st[key(name)]) { toast(`${name} is already on the ladder.`, true); return; }
-    openIssue({ type: "player", name }, `New player: ${name}`, `Add **${name}** to the ladder.`);
-    $("newName").value = "";
-    toast(`GitHub opened in a new tab. Press Create there to add ${name}.`);
-    render();
+    if (!name || !store) return;
+    if (players.some(p => p.name.toLowerCase() === name.toLowerCase())) { toast(`${name} is already on the ladder.`, true); return; }
+    try { await store.addPlayer({ name, createdAt: Date.now() }); $("newName").value = ""; toast(`${name} joined at ${START}.`); }
+    catch (err) { toast(errMsg(err), true); }
   });
-  $("log").addEventListener("click", e => {
+  $("log").addEventListener("click", async e => {
     const b = e.target.closest("button"); if (!b) return;
     if (b.dataset.cancel) { pendingDelete = null; render(); return; }
     if (!b.dataset.del) return;
     if (!b.dataset.sure) { pendingDelete = b.dataset.del; render(); return; }
     pendingDelete = null;
-    const m = matches.find(x => x.id === b.dataset.del); if (!m) return;
-    openIssue({ type: "delete", id: m.id }, `Delete match: ${m.winner} beat ${m.loser}`,
-      `Delete the match **${m.winner}** beat **${m.loser}** (${new Date(m.at).toISOString()}).`);
-    toast("GitHub opened in a new tab. Press Create there to delete the match.");
+    try { await store.deleteMatch(b.dataset.del); toast("Match deleted. Ratings recalculated."); }
+    catch (err) { toast(errMsg(err), true); }
     render();
   });
   $("moreBtn").addEventListener("click", () => { showCount += 30; render(); });
-  $("dataLink").href = `https://github.com/${REPO}/blob/HEAD/data.json`;
-
-  // ---------- Loading ----------
-  async function load() {
-    try {
-      const res = await fetch(`data.json?t=${Date.now()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(res.status);
-      const data = await res.json();
-      players = (data.players || []).filter(p => p && p.name);
-      matches = (data.matches || []).filter(m => m && m.winner && m.loser);
-      loaded = true;
-      prunePending();
-      setSync("live", pending.length ? `${pending.length} pending · updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Up to date");
-    } catch (_) {
-      loaded = true;
-      setSync("local", "Couldn't load results – retrying");
-    }
-    render();
+  function errMsg(err) {
+    const c = err && err.code;
+    if (c === "permission-denied") return "The database refused this change. Check the Firestore rules.";
+    if (c === "resource-exhausted") return "The free Firebase quota is used up for today. Try again tomorrow.";
+    return "Couldn't save. Check your connection and try again.";
   }
-  render();
-  load();
-  setInterval(() => { if (!document.hidden) load(); }, pending.length ? 15000 : 30000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+
+  // ---------- Storage ----------
+  function localStore() {
+    const KEY = "srl-pingpong-v1";
+    let data = { players: [], matches: [] };
+    try { data = JSON.parse(localStorage.getItem(KEY)) || data; } catch (_) {}
+    const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (_) {} sync(); };
+    const sync = () => { players = data.players; matches = data.matches; render(); };
+    const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    sync();
+    return {
+      addPlayer: async p => { data.players.push({ id: uid(), ...p }); save(); },
+      addMatch: async m => { data.matches.push({ id: uid(), ...m }); save(); },
+      deleteMatch: async id => { data.matches = data.matches.filter(m => m.id !== id); save(); },
+    };
+  }
+
+  async function boot() {
+    render();
+    const cfg = window.FIREBASE_CONFIG;
+    if (!window.firebase || !cfg || !cfg.projectId || /^REPLACE/.test(cfg.projectId)) {
+      store = localStore();
+      setSync("local", "Not connected to Firebase · this device only");
+      return;
+    }
+    firebase.initializeApp(cfg);
+    const db = firebase.firestore();
+    store = {
+      addPlayer: p => db.collection("players").add(p),
+      addMatch: m => db.collection("matches").add(m),
+      deleteMatch: id => db.collection("matches").doc(id).delete(),
+    };
+    const onErr = () => setSync("", "Offline – retrying");
+    db.collection("players").onSnapshot(s => {
+      players = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.name);
+      setSync("live", "Live · shared");
+      render();
+    }, onErr);
+    db.collection("matches").onSnapshot(s => {
+      matches = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => m.winner && m.loser);
+      render();
+    }, onErr);
+  }
+  boot();
 })();
 </script>

@@ -1,20 +1,16 @@
 # SRL PingpongArena
 
-Elo ladder for 1v1 ping-pong matches, hosted on GitHub Pages:
-**https://chomeed.github.io/srl_pingpongarena/**
+Elo ladder for 1v1 ping-pong matches: **https://chomeed.github.io/srl_pingpongarena/**
 
-## Logging a match
-1. Tap the winner, tap the loser, press **Save on GitHub**.
-2. GitHub opens a pre-filled issue. Press **Create**.
-3. A GitHub Action records it in `data.json`, closes the issue, and redeploys the site (about a minute).
-   Your own device shows the result straight away, marked *pending*.
-
-Adding players and deleting a wrong match work the same way. A match can be deleted by whoever logged it or by a repo collaborator.
-Everyone needs a (free) GitHub account to log results.
-
-## Rating
-Everyone starts at 1000, K-factor 32. Players with fewer than 5 games are marked provisional (P).
-Ratings are replayed from the full history in `data.json`, so deleting or editing a match corrects everyone's rating.
+Tap the winner, tap the loser, press **Save result**. Results are shared live through Firebase (Firestore).
+Everyone starts at 1000, K-factor 32; fewer than 5 games is provisional (P).
+Ratings are replayed from the full match history, so deleting a wrong match corrects everyone's rating.
 
 ## Setup (once)
-Settings → Pages → Build and deployment → Source: **GitHub Actions**.
+1. **GitHub Pages:** Settings → Pages → Source: **GitHub Actions**. Every push to the default branch redeploys.
+2. **Firebase:** create a project at https://console.firebase.google.com (free Spark plan),
+   add a **Firestore Database**, and register a **Web app**.
+3. Paste the web app's config into `firebase-config.js`.
+4. In Firestore → **Rules**, paste the contents of `firestore.rules` and publish.
+
+Without a config the page still works, but saves only on the current device.

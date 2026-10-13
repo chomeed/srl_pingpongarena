@@ -301,6 +301,27 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
   button.link { padding: 8px 6px; }
   .roster li { padding: 4px 0; }
 }
+/* Matchmaking */
+section.panel.mm { margin-top: 20px; }
+.mm-here { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.mm-here button { font: inherit; font-size: 14px; padding: 7px 12px; min-height: 38px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; touch-action: manipulation; }
+.mm-here button[aria-pressed="true"] { background: var(--table); border-color: var(--table); color: var(--table-ink); }
+.mm-here button.clear { background: transparent; color: var(--muted); border-style: dashed; }
+.mm-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.mm-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; }
+.mm-card.best { border-color: var(--ball); box-shadow: 0 0 0 3px var(--ball-soft); }
+.mm-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.mm-teams { font-size: 17px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.mm-teams .vs { color: var(--muted); font-weight: 400; font-size: 14px; margin: 0 6px; }
+.mm-odds { font-family: var(--mono); font-size: 13px; color: var(--muted); white-space: nowrap; }
+.mm-why { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.mm-why span { font-size: 12px; color: var(--muted); background: var(--bg); border-radius: 999px; padding: 2px 9px; }
+.mm-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; display: flex; }
+.mm-bar i { display: block; height: 100%; background: var(--table); }
+.mm-act { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mm-act .label { margin-right: 2px; }
+.mm-act button { font: inherit; font-size: 14px; font-weight: 600; padding: 8px 14px; min-height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; touch-action: manipulation; }
+.mm-act button:hover { border-color: var(--win); }
 /* Player page */
 a.plink { color: inherit; text-decoration: none; }
 a.plink:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -444,6 +465,19 @@ body.sheet-open { overflow: hidden; }
     </section>
   </div>
 
+  <section class="panel mm" aria-labelledby="mm-h">
+    <div class="headrow">
+      <h2 id="mm-h">Matchmaking</h2>
+      <div class="seg" role="group" aria-label="Suggest" id="mmSeg">
+        <button type="button" data-mm="1" aria-pressed="true">1v1</button>
+        <button type="button" data-mm="2" aria-pressed="false">2v2</button>
+      </div>
+    </div>
+    <p class="hint" id="mmHint">Tap who's at the table to get fair games. With nobody selected, everyone is considered.</p>
+    <div class="mm-here" id="mmHere"></div>
+    <ol class="mm-list" id="mmList"></ol>
+  </section>
+
   <section class="panel history" aria-labelledby="his-h">
     <h2 id="his-h">Recent matches</h2>
     <ol class="log" id="log"></ol>
@@ -509,6 +543,15 @@ body.sheet-open { overflow: hidden; }
         <li>⚔️ Giant killer: won against a player (or team) rated 100+ points higher, in the last 7 days.</li>
       </ul>
       <p>Badges follow the tab you're viewing: a 2v2 streak shows on the 2v2 tab, and both formats count toward Overall.</p>
+      <h3>Matchmaking</h3>
+      <p>Suggestions rank every possible game among the players at the table (or everyone, if nobody is selected):</p>
+      <ul>
+        <li><b>Fairness (most weight):</b> win chances close to 50–50, using 1v1 ratings for 1v1 and 2v2 ratings for 2v2 (team average).</li>
+        <li><b>Variety:</b> people who rarely play each other, or rarely partner in 2v2, come first. A pair who played in the last hour is pushed down.</li>
+        <li><b>Rotation:</b> players who haven't played for a while get priority.</li>
+        <li><b>Placements:</b> players still in their first 5 games get a small boost so they get ranked sooner.</li>
+      </ul>
+      <p>After the game, tap who won on the suggestion and then <b>Save</b>; add a score first if you like.</p>
       <h3>Good to know</h3>
       <ul>
         <li>The score (e.g. 11–4) is saved for the record but doesn't change points. Only the win counts.</li>
@@ -543,6 +586,9 @@ body.sheet-open { overflow: hidden; }
   let showCount = 15;
   let store = null;   // adapter: {addPlayer, addMatch, deleteMatch, renamePlayer, setRetired, removePlayer}
   let pendingDelete = null;
+  // matchmaking: suggestion format, who's at the table (remembered for 3 hours on this device), last suggestions shown
+  let mmSize = 1, here = new Set(), lastSuggestions = [];
+  try { const h = JSON.parse(localStorage.getItem("arena-here") || "null"); if (h && Date.now() - h.at < 3 * 3600e3) here = new Set(h.ids); } catch (_) {}
   let pendingRemove = null; // player id awaiting remove confirmation
   let editingId = null;     // player id being renamed
   let announce = null;      // {requestedAt, postedAt} from the database; null when not connected
@@ -672,6 +718,7 @@ body.sheet-open { overflow: hidden; }
     }).join("") : '<li class="empty">No matches yet. Log your first game above.</li>';
     $("moreBtn").hidden = recent.length <= showCount;
     renderRoster(st);
+    renderMatchmaking(st);
     if (openPlayer) renderPlayer(); else document.title = "SRL PingpongArena";
     if (!$("micBtn").hidden) {
       $("voiceHint").hidden = false;
@@ -1002,6 +1049,107 @@ body.sheet-open { overflow: hidden; }
       try { rec.start(); } catch (_) { stop(); }
     });
   }
+
+  // ---------- Matchmaking ----------
+  // Suggests fair games among the players at the table. Score = fairness (win chance near 50%)
+  // + variety (haven't played each other / partnered much) + rotation (waited longest) + placements need games.
+  const saveHere = () => { try { localStorage.setItem("arena-here", JSON.stringify({ at: Date.now(), ids: [...here] })); } catch (_) {} };
+  const pct = x => Math.round(x * 100);
+  const mins = t => (Date.now() - t) / 60000;
+
+  function suggestions(st) {
+    const active = players.filter(p => !p.retired && st[p.id]);
+    const pool = (here.size ? active.filter(p => here.has(p.id)) : active).map(p => p.id);
+    const lastPlayed = {}, met = {}, metLast = {}, partnered = {};
+    const key = (a, b) => [a, b].sort().join("|");
+    for (const m of matches) {
+      const [W, L] = teams(m);
+      for (const id of [...W, ...L]) lastPlayed[id] = Math.max(lastPlayed[id] || 0, m.at);
+      if (!isDoubles(m)) { const k = key(W[0], L[0]); met[k] = (met[k] || 0) + 1; metLast[k] = Math.max(metLast[k] || 0, m.at); }
+      else for (const t of [W, L]) { const k = key(t[0], t[1]); partnered[k] = (partnered[k] || 0) + 1; }
+      if (isDoubles(m)) for (const a of W) for (const b of L) { const k = key(a, b); met[k] = (met[k] || 0) + 1; metLast[k] = Math.max(metLast[k] || 0, m.at); }
+    }
+    const rest = id => lastPlayed[id] ? Math.min(1, mins(lastPlayed[id]) / 60) : 1;     // 1 = rested an hour+ (or never played)
+    const inPlacement = (id, k) => st[id][k].w + st[id][k].l < PLACEMENTS;
+    const out = [];
+    if (mmSize === 1) {
+      for (let i = 0; i < pool.length; i++) for (let j = i + 1; j < pool.length; j++) {
+        const a = pool[i], b = pool[j], k = key(a, b);
+        const E = expected(st[a].s.elo, st[b].s.elo), fair = 1 - Math.abs(E - .5) * 2;
+        const variety = 1 / (1 + (met[k] || 0)), justMet = metLast[k] && mins(metLast[k]) < 60;
+        const place = inPlacement(a, "s") || inPlacement(b, "s");
+        const score = .55 * fair + .2 * variety + .15 * (rest(a) + rest(b)) / 2 + (place ? .1 : 0) - (justMet ? .4 : 0);
+        out.push({ score, sides: [[a], [b]], E, met: met[k] || 0, justMet, place: [a, b].filter(id => inPlacement(id, "s")) });
+      }
+    } else if (pool.length >= 4) {
+      const ids = pool.slice(0, 12);
+      for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) for (let c = b + 1; c < ids.length; c++) for (let d = c + 1; d < ids.length; d++) {
+        const q = [ids[a], ids[b], ids[c], ids[d]];
+        for (const [x, y] of [[[q[0], q[1]], [q[2], q[3]]], [[q[0], q[2]], [q[1], q[3]]], [[q[0], q[3]], [q[1], q[2]]]]) {
+          const ra = (st[x[0]].d.elo + st[x[1]].d.elo) / 2, rb = (st[y[0]].d.elo + st[y[1]].d.elo) / 2;
+          const E = expected(ra, rb), fair = 1 - Math.abs(E - .5) * 2;
+          const pv = 1 / (1 + (partnered[key(...x)] || 0) + (partnered[key(...y)] || 0));
+          const restAvg = q.reduce((t, id) => t + rest(id), 0) / 4;
+          const place = q.filter(id => inPlacement(id, "d"));
+          out.push({ score: .55 * fair + .2 * pv + .15 * restAvg + (place.length ? .1 : 0), sides: [x, y], E, pv, place });
+        }
+      }
+    }
+    // best first, each pairing once
+    out.sort((p, q) => q.score - p.score);
+    const picked = [], seen = new Set();
+    for (const s of out) { const sig = s.sides.map(t => t.slice().sort().join("+")).sort().join(" vs "); if (seen.has(sig)) continue; seen.add(sig); picked.push(s); if (picked.length === 3) break; }
+    return { picked, pool };
+  }
+
+  function renderMatchmaking(st) {
+    for (const b of $("mmSeg").children) b.setAttribute("aria-pressed", String(Number(b.dataset.mm) === mmSize));
+    const active = players.filter(p => !p.retired).sort((a, b) => a.name.localeCompare(b.name));
+    $("mmHere").innerHTML = active.map(p => `<button type="button" data-here="${esc(p.id)}" aria-pressed="${here.has(p.id)}">${esc(p.name)}</button>`).join("") +
+      (here.size ? `<button type="button" class="clear" data-here="">Clear (${here.size} here)</button>` : "");
+    const nameOf = id => st[id] ? st[id].name : "?";
+    const team = ids => ids.map(nameOf).join(" & ");
+    const { picked, pool } = suggestions(st);
+    const need = mmSize === 2 ? 4 : 2;
+    if (pool.length < need) {
+      $("mmList").innerHTML = `<li class="p-empty">${here.size ? `Select at least ${need} players for a ${mmSize === 2 ? "2v2" : "1v1"} suggestion.` : `Add at least ${need} players to get suggestions.`}</li>`;
+      return;
+    }
+    $("mmList").innerHTML = picked.map((g, i) => {
+      const [A, B] = g.sides, fav = g.E >= .5 ? A : B, favP = Math.max(g.E, 1 - g.E);
+      const why = [];
+      why.push(favP <= .55 ? `Even match (${pct(g.E)}–${pct(1 - g.E)})` : `${team(fav)} favoured ${pct(favP)}%`);
+      if (mmSize === 1) why.push(g.met === 0 ? "First meeting" : `Played ${g.met}×` + (g.justMet ? " (just now)" : ""));
+      else why.push(g.pv === 1 ? "New partnerships" : "Mixed-up teams");
+      if (g.place.length) why.push(g.place.length > 2 ? `${g.place.length} players in placements` : `${g.place.map(nameOf).join(" & ")} in placements`);
+      const sideBtn = (ids, n) => `<button type="button" data-mmwin="${n}" data-g="${i}">${esc(team(ids))} won</button>`;
+      return `<li class="mm-card${i === 0 ? " best" : ""}">
+        <div class="mm-top"><span class="mm-teams">${i === 0 ? "⭐ " : ""}${esc(team(A))}<span class="vs">vs</span>${esc(team(B))}</span>
+          <span class="mm-odds">${pct(g.E)}% · ${pct(1 - g.E)}%</span></div>
+        <div class="mm-bar" aria-hidden="true"><i style="width:${pct(g.E)}%"></i></div>
+        <div class="mm-why">${why.map(w => `<span>${esc(w)}</span>`).join("")}</div>
+        <div class="mm-act"><span class="label">Played it?</span>${sideBtn(A, 0)}${sideBtn(B, 1)}</div>
+      </li>`;
+    }).join("");
+    lastSuggestions = picked;
+  }
+  $("mmSeg").addEventListener("click", e => { const b = e.target.closest("button[data-mm]"); if (!b) return; mmSize = Number(b.dataset.mm); render(); });
+  $("mmHere").addEventListener("click", e => {
+    const b = e.target.closest("button[data-here]"); if (!b) return;
+    const id = b.dataset.here;
+    if (!id) here.clear(); else here.has(id) ? here.delete(id) : here.add(id);
+    saveHere(); render();
+  });
+  $("mmList").addEventListener("click", e => {
+    const b = e.target.closest("button[data-mmwin]"); if (!b) return;
+    const g = lastSuggestions[Number(b.dataset.g)]; if (!g) return;
+    const w = Number(b.dataset.mmwin);
+    size = g.sides[0].length; pick = { win: [...g.sides[w]], lose: [...g.sides[1 - w]] };
+    $("scoreW").value = ""; $("scoreL").value = "";
+    render();
+    $("confirm").scrollIntoView({ behavior: "smooth", block: "center" });
+    toast("Check the result (add a score if you like), then tap Save.");
+  });
 
   // ---------- Theme ----------
   const THEMES = ["auto", "dark", "light"], THEME_LABEL = { auto: "◐ Auto", dark: "☾ Dark", light: "☀ Light" };

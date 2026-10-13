@@ -178,8 +178,8 @@ section.panel.ladder td { padding-top: 12px; padding-bottom: 12px; }
 section.panel.ladder td.name { font-size: 17px; }
 section.panel.ladder td.elo { font-size: 20px; }
 section.panel.ladder td.rank { font-size: 1.6rem; }
-section.panel.ladder tr:nth-child(2) td.rank, section.panel.ladder tr:nth-child(3) td.rank { color: #ffd38a; }
-section.panel.ladder tbody tr:first-child { background: rgba(255, 255, 255, .07); }
+section.panel.ladder tr.r2 td.rank, section.panel.ladder tr.r3 td.rank { color: #ffd38a; }
+section.panel.ladder tbody tr.top1 { background: rgba(255, 255, 255, .07); }
 section.panel.ladder .tier { color: var(--muted); }
 section.panel.ladder .tier.apex { color: #ffffff; }
 section.panel.ladder .t-iron { --tc: #a29a94; }
@@ -564,6 +564,7 @@ body.sheet-open { overflow: hidden; }
       <ul>
         <li>The score (e.g. 11–4) is saved for the record but doesn't change points. Only the win counts.</li>
         <li>During placements (first 5 games) your rating still moves, at double speed; only the tier is hidden until you finish.</li>
+        <li>Players with the same rating share a rank (e.g. 1, 2, 2, 4) and, at the top, the same apex tier.</li>
         <li>Ratings are recalculated from the full match history every time, in the order matches were played. Deleting a wrong match corrects everyone's numbers.</li>
         <li>Hiding a player removes them from the ladder but keeps their matches, so nobody else's rating changes.</li>
       </ul>
@@ -644,8 +645,15 @@ body.sheet-open { overflow: hidden; }
     const order = Object.values(st).filter(p => !p.retired)
       .sort((a, b) => b[k].elo - a[k].elo || (b[k].w - b[k].l) - (a[k].w - a[k].l) || a.name.localeCompare(b.name));
     const byId = {};
-    let place = 0;
-    order.forEach((p, i) => { const g = p[k].w + p[k].l; byId[p.id] = { rank: i + 1, tier: tierOf(p[k].elo, g, g >= PLACEMENTS ? place++ : -1) }; });
+    // equal ratings share a rank (1, 2, 2, 4); apex tiers follow the shared rank among placed players
+    let rank = 0, prev = null, placed = 0, pRank = 0, pPrev = null;
+    order.forEach((p, i) => {
+      const e = p[k].elo, g = p[k].w + p[k].l;
+      if (e !== prev) { rank = i + 1; prev = e; }
+      let apexPlace = -1;
+      if (g >= PLACEMENTS) { placed++; if (e !== pPrev) { pRank = placed; pPrev = e; } apexPlace = pRank - 1; }
+      byId[p.id] = { rank, tier: tierOf(e, g, apexPlace) };
+    });
     return { order, byId };
   }
 
@@ -706,7 +714,8 @@ body.sheet-open { overflow: hidden; }
       const r = p[view], games = r.w + r.l;
       const t = byId[p.id].tier;
       const form = r.form.slice(-5).map(x => `<b class="${x}" title="${x === "w" ? "Win" : "Loss"}"></b>`).join("");
-      return `<tr class="${i === 0 && games ? "top1" : ""}"><td class="rank">${i + 1}</td>
+      const rk = byId[p.id].rank;
+      return `<tr class="r${rk}${rk === 1 && games ? " top1" : ""}"><td class="rank">${rk}</td>
         <td class="name"><a class="plink" href="#p-${esc(p.id)}">${esc(p.name)}</a>${badges(r)}<div class="tier ${t.cls}${t.apex ? " apex" : ""}"><i></i>${t.name}</div></td>
         <td class="num elo">${r.elo}</td><td class="num">${r.w}–${r.l}</td><td><span class="form">${form}</span></td></tr>`;
     }).join("") : '<tr><td colspan="5" class="empty">The ladder fills in as soon as players are added.</td></tr>';

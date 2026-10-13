@@ -31,14 +31,20 @@ export function computeArena(playersRaw, matchesRaw) {
   }
   // ranked list for one ladder ("o" overall, "s" 1v1, "d" 2v2), with tiers
   const ladder = (k = "o") => {
-    let place = 0;
+    // equal ratings share a rank (1, 2, 2, 4); apex tiers follow the shared rank among placed players
+    let rank = 0, prev = null, placed = 0, pRank = 0, pPrev = null;
     return Object.values(st).filter(p => !p.retired)
       .sort((a, b) => b[k].elo - a[k].elo || (b[k].w - b[k].l) - (a[k].w - a[k].l) || a.name.localeCompare(b.name))
       .map((p, i) => {
         const r = p[k], games = r.w + r.l;
-        const tier = games < PLACEMENTS ? `Placement ${games}/${PLACEMENTS}`
-          : place < APEX.length && r.elo >= APEX_MIN ? APEX[place++] : (place++, TIERS.find(([min]) => r.elo >= min)[1]);
-        return { id: p.id, rank: i + 1, name: p.name, elo: r.elo, wins: r.w, losses: r.l, last5: r.form.slice(-5), form: r.form, provisional: games < PLACEMENTS, tier };
+        if (r.elo !== prev) { rank = i + 1; prev = r.elo; }
+        let tier;
+        if (games < PLACEMENTS) tier = `Placement ${games}/${PLACEMENTS}`;
+        else {
+          placed++; if (r.elo !== pPrev) { pRank = placed; pPrev = r.elo; }
+          tier = pRank <= APEX.length && r.elo >= APEX_MIN ? APEX[pRank - 1] : TIERS.find(([min]) => r.elo >= min)[1];
+        }
+        return { id: p.id, rank, name: p.name, elo: r.elo, wins: r.w, losses: r.l, last5: r.form.slice(-5), form: r.form, provisional: games < PLACEMENTS, tier };
       });
   };
   const team = ids => ids.map(id => st[id].name).join(" & ");

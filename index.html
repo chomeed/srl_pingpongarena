@@ -201,7 +201,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script>
 (() => {
@@ -349,8 +349,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   $("moreBtn").addEventListener("click", () => { showCount += 30; render(); });
   function errMsg(err) {
     const c = err && err.code;
-    if (c === "permission-denied") return "The database refused this change. Check the Firestore rules.";
-    if (c === "resource-exhausted") return "The free Firebase quota is used up for today. Try again tomorrow.";
+    if (c === "PERMISSION_DENIED" || c === "permission-denied") return "The database refused this change. Check the database rules.";
     return "Couldn't save. Check your connection and try again.";
   }
 
@@ -379,22 +378,17 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
       return;
     }
     firebase.initializeApp(cfg);
-    const db = firebase.firestore();
+    const db = firebase.database();
     store = {
-      addPlayer: p => db.collection("players").add(p),
-      addMatch: m => db.collection("matches").add(m),
-      deleteMatch: id => db.collection("matches").doc(id).delete(),
+      addPlayer: p => db.ref("players").push(p),
+      addMatch: m => db.ref("matches").push(m),
+      deleteMatch: id => db.ref("matches/" + id).remove(),
     };
-    const onErr = () => setSync("", "Offline – retrying");
-    db.collection("players").onSnapshot(s => {
-      players = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.name);
-      setSync("live", "Live · shared");
-      render();
-    }, onErr);
-    db.collection("matches").onSnapshot(s => {
-      matches = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => m.winner && m.loser);
-      render();
-    }, onErr);
+    const list = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
+    const onErr = () => setSync("", "Can't read results – check the database rules");
+    db.ref(".info/connected").on("value", s => setSync(s.val() ? "live" : "", s.val() ? "Live · shared" : "Offline – reconnecting"));
+    db.ref("players").on("value", s => { players = list(s).filter(p => p.name); render(); }, onErr);
+    db.ref("matches").on("value", s => { matches = list(s).filter(m => m.winner && m.loser); render(); }, onErr);
   }
   boot();
 })();

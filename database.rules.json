@@ -1,0 +1,25 @@
+{
+  "rules": {
+    "players": {
+      ".read": true,
+      "$id": {
+        ".write": "!data.exists() && newData.exists()",
+        ".validate": "newData.hasChildren(['name', 'createdAt']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 32 && newData.child('createdAt').isNumber()",
+        "name": { ".validate": true },
+        "createdAt": { ".validate": true },
+        "$other": { ".validate": false }
+      }
+    },
+    "matches": {
+      ".read": true,
+      "$id": {
+        ".write": "(!data.exists() && newData.exists()) || !newData.exists()",
+        ".validate": "newData.hasChildren(['winner', 'loser', 'at']) && newData.child('winner').isString() && newData.child('loser').isString() && newData.child('winner').val() != newData.child('loser').val() && root.child('players').child(newData.child('winner').val()).exists() && root.child('players').child(newData.child('loser').val()).exists() && newData.child('at').isNumber()",
+        "winner": { ".validate": true },
+        "loser": { ".validate": true },
+        "at": { ".validate": true },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

@@ -113,6 +113,13 @@ details.add summary { cursor: pointer; font-weight: 600; color: var(--table); }
 .seg button { font: inherit; font-weight: 600; font-size: 14px; padding: 7px 16px; background: transparent; color: var(--muted); border: 0; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { background: var(--table); color: var(--table-ink); }
+.logbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.logbar .seg { margin-bottom: 0; }
+.mic { font: inherit; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.mic svg { width: 16px; height: 16px; fill: currentColor; }
+.mic.on { background: var(--ball); border-color: var(--ball); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px var(--ball-soft); } }
+.heard { font-size: 14px; color: var(--muted); margin: -4px 0 12px; font-style: italic; overflow-wrap: anywhere; }
 .headrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
 .headrow .seg { margin-bottom: 0; }
 .tag { font-size: 11px; font-family: var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
@@ -158,7 +165,18 @@ ol.log time { font-size: 13px; color: var(--muted); font-family: var(--mono); }
 button.link { font: inherit; font-size: 13px; background: none; border: 0; color: var(--loss); cursor: pointer; padding: 0 4px; text-decoration: underline; }
 .empty { color: var(--muted); padding: 14px 0; }
 .more { margin-top: 10px; }
-footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+details.howto { margin-top: 20px; }
+details.howto summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+details.howto summary::-webkit-details-marker { display: none; }
+details.howto summary::after { content: "Read"; font-size: 13px; font-weight: 600; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+details.howto[open] summary::after { content: "Close"; }
+details.howto summary h2 { margin: 0; }
+.howto-body { max-width: 68ch; margin-top: 12px; }
+.howto-body h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 18px 0 6px; }
+.howto-body p, .howto-body li { margin: 0 0 8px; }
+.howto-body ol, .howto-body ul { padding-left: 1.3em; margin: 0 0 8px; }
+.howto-body code { font-family: var(--mono); font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+table.examples { margin: 8px 0 4px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -176,10 +194,14 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   <div class="grid">
     <section class="panel" aria-labelledby="log-h">
       <h2 id="log-h">Log a match</h2>
-      <div class="seg" role="group" aria-label="Match type" id="modeSeg">
-        <button type="button" data-mode="1" aria-pressed="true">1v1</button>
-        <button type="button" data-mode="2" aria-pressed="false">2v2</button>
+      <div class="logbar">
+        <div class="seg" role="group" aria-label="Match type" id="modeSeg">
+          <button type="button" data-mode="1" aria-pressed="true">1v1</button>
+          <button type="button" data-mode="2" aria-pressed="false">2v2</button>
+        </div>
+        <button type="button" class="mic" id="micBtn" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg><span>Say result</span></button>
       </div>
+      <p class="heard" id="heard" hidden></p>
       <p class="hint" id="logHint">Tap the winner, then the loser, then Save.</p>
 
       <div class="steps">
@@ -217,11 +239,12 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
       <div class="headrow">
         <h2 id="lad-h">Ladder</h2>
         <div class="seg" role="group" aria-label="Ladder" id="viewSeg">
-          <button type="button" data-view="s" aria-pressed="true">Singles</button>
-          <button type="button" data-view="d" aria-pressed="false">Doubles</button>
+          <button type="button" data-view="o" aria-pressed="true">Overall</button>
+          <button type="button" data-view="s" aria-pressed="false">1v1</button>
+          <button type="button" data-view="d" aria-pressed="false">2v2</button>
         </div>
       </div>
-      <p class="hint">Everyone starts at 1000 in each ladder. K-factor 32; doubles use the team's average rating. <span class="provisional">(P)</span> = fewer than 5 games.</p>
+      <p class="hint">Overall counts every match; the 1v1 and 2v2 tabs count only that format. Everyone starts at 1000, K-factor 32; 2v2 uses each team's average rating. <span class="provisional">(P)</span> = fewer than 5 games.</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>#</th><th>Player</th><th class="num">Elo</th><th class="num">W–L</th><th>Last 5</th></tr></thead>
@@ -237,12 +260,45 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     <div class="more"><button class="ghost" id="moreBtn" type="button" hidden>Show more</button></div>
   </section>
 
-  <footer>Ratings are recomputed from the full match history, so deleting a match fixes everyone's rating.</footer>
+  <details class="panel howto" id="howto">
+    <summary><h2>How scoring works</h2></summary>
+    <div class="howto-body">
+      <p>Ratings use the <b>Elo system</b>, the same idea chess uses. Everyone starts at <b>1000</b>. When you win you take points from the other side, and how many depends on how surprising the result was.</p>
+      <h3>One match</h3>
+      <ol>
+        <li>Work out the winner's expected chance of winning from the rating gap:<br>
+          <code>expected = 1 / (1 + 10<sup>(loser − winner) / 400</sup>)</code></li>
+        <li>Points moved = <code>32 × (1 − expected)</code>, rounded. 32 is the K-factor: the most one match can move.</li>
+        <li>The winner gains those points and the loser loses the same amount.</li>
+      </ol>
+      <div class="tablewrap"><table class="examples">
+        <thead><tr><th>Winner</th><th>Loser</th><th class="num">Expected</th><th class="num">Points</th></tr></thead>
+        <tbody>
+          <tr><td>1000</td><td>1000</td><td class="num">50%</td><td class="num">±16</td></tr>
+          <tr><td>1100 (favourite)</td><td>1000</td><td class="num">64%</td><td class="num">±12</td></tr>
+          <tr><td>1000 (upset)</td><td>1100</td><td class="num">36%</td><td class="num">±20</td></tr>
+          <tr><td>1200 (big favourite)</td><td>1000</td><td class="num">76%</td><td class="num">±8</td></tr>
+        </tbody>
+      </table></div>
+      <h3>2v2</h3>
+      <p>Each team's rating is the average of its two players. The points are worked out the same way, then every winner gains them and every loser loses them.</p>
+      <h3>The three ladders</h3>
+      <p><b>Overall</b> counts every match, 1v1 and 2v2. The <b>1v1</b> and <b>2v2</b> tabs keep separate ratings that only count that format, so you can see who is strongest at each.</p>
+      <h3>Good to know</h3>
+      <ul>
+        <li>The score (e.g. 11–4) is saved for the record but doesn't change points. Only the win counts.</li>
+        <li><span class="provisional">(P)</span> marks players with fewer than 5 games, whose rating is still settling.</li>
+        <li>Ratings are recalculated from the full match history every time, in the order matches were played. Deleting a wrong match corrects everyone's numbers.</li>
+        <li>Hiding a player removes them from the ladder but keeps their matches, so nobody else's rating changes.</li>
+      </ul>
+    </div>
+  </details>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="voice-parse.js"></script>
 <script>
 (() => {
   const START = 1000, K = 32;
@@ -250,7 +306,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   let players = [];   // {id, name, createdAt, retired?}
   let matches = [];   // {id, winner, loser, winner2?, loser2?, at, winnerScore?, loserScore?}
   let size = 1;       // 1 = singles, 2 = doubles
-  let view = "s";     // ladder shown: "s" singles, "d" doubles
+  let view = "o";     // ladder shown: "o" overall (all matches), "s" 1v1 only, "d" 2v2 only
   let pick = { win: [], lose: [] };
   let showCount = 15;
   let store = null;   // adapter: {addPlayer, addMatch, deleteMatch, renamePlayer, setRetired, removePlayer}
@@ -268,16 +324,18 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     const st = {};
     const blank = () => ({ elo: START, w: 0, l: 0, form: [] });
     // retired players stay in the replay so their opponents' ratings don't change
-    for (const p of players) st[p.id] = { ...p, s: blank(), d: blank() };
+    for (const p of players) st[p.id] = { ...p, o: blank(), s: blank(), d: blank() };
     const deltas = {};
     for (const m of [...matches].sort((a, b) => a.at - b.at)) {
       const [W, L] = teams(m);
       if (![...W, ...L].every(id => st[id])) continue;
-      const k = isDoubles(m) ? "d" : "s";
-      const d = swing(W, L, st, k);
-      for (const id of W) { const r = st[id][k]; r.elo += d; r.w++; r.form.push("w"); }
-      for (const id of L) { const r = st[id][k]; r.elo -= d; r.l++; r.form.push("l"); }
-      deltas[m.id] = d;
+      // every match moves the overall rating; it also moves the 1v1-only or 2v2-only rating
+      for (const k of ["o", isDoubles(m) ? "d" : "s"]) {
+        const d = swing(W, L, st, k);
+        for (const id of W) { const r = st[id][k]; r.elo += d; r.w++; r.form.push("w"); }
+        for (const id of L) { const r = st[id][k]; r.elo -= d; r.l++; r.form.push("l"); }
+        if (k === "o") deltas[m.id] = d;
+      }
     }
     return { st, deltas };
   }
@@ -288,7 +346,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   function render() {
     const { st, deltas } = compute();
     const active = players.filter(p => !p.retired);
-    const mk = size === 2 ? "d" : "s";
+    const mk = "o";
     const nameOf = id => (st[id] ? st[id].name : "?");
     const team = ids => ids.map(nameOf).join(" & ");
 
@@ -362,7 +420,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   function renderRoster(st) {
     if (editingId && document.activeElement && document.activeElement.id === "renameInput") return; // don't wipe typing
     const row = p => {
-      const r = st[p.id], games = r.s.w + r.s.l + r.d.w + r.d.l;
+      const games = st[p.id].o.w + st[p.id].o.l;
       if (editingId === p.id) return `<li><form class="addform" id="renameForm" style="margin:0;width:100%">
           <input id="renameInput" maxlength="32" value="${esc(p.name)}" aria-label="New name for ${esc(p.name)}" required>
           <button class="primary" type="submit">Save</button><button class="ghost" type="button" data-act="cancel">Cancel</button></form></li>`;
@@ -371,9 +429,9 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
           <span class="note">${games
             ? `${esc(p.name)} has ${games} match${games > 1 ? "es" : ""}. They'll be hidden from the ladder, but their matches stay so other players' ratings don't change. You can restore them later.`
             : `${esc(p.name)} has no matches and will be removed.`}</span></li>`;
-      if (p.retired) return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].s.elo} · ${games} game${games === 1 ? "" : "s"}</small></span>
+      if (p.retired) return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].o.elo} · ${games} game${games === 1 ? "" : "s"}</small></span>
           <span class="acts"><button class="link plain" data-act="restore" data-id="${esc(p.id)}">Restore</button></span></li>`;
-      return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].s.elo}${st[p.id].d.w + st[p.id].d.l ? ` · 2v2 ${st[p.id].d.elo}` : ""}</small></span>
+      return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].o.elo}</small></span>
           <span class="acts"><button class="link plain" data-act="rename" data-id="${esc(p.id)}">Rename</button><button class="link" data-act="remove" data-id="${esc(p.id)}">Remove</button></span></li>`;
     };
     const byName = (a, b) => a.name.localeCompare(b.name);
@@ -396,7 +454,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   function setSync(cls, text) { const s = $("sync"); s.className = "sync " + cls; s.lastElementChild.textContent = text; }
 
   // ---------- Interaction ----------
-  const clearPick = () => { pick = { win: [], lose: [] }; $("scoreW").value = ""; $("scoreL").value = ""; };
+  const clearPick = () => { pick = { win: [], lose: [] }; $("scoreW").value = ""; $("scoreL").value = ""; $("heard").hidden = true; };
   $("chips").addEventListener("click", e => {
     const b = e.target.closest(".chip"); if (!b || b.disabled) return;
     const id = b.dataset.id;
@@ -409,7 +467,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   $("modeSeg").addEventListener("click", e => {
     const b = e.target.closest("button[data-mode]"); if (!b) return;
     const n = Number(b.dataset.mode); if (n === size) return;
-    size = n; view = n === 2 ? "d" : "s"; clearPick(); render();
+    size = n; clearPick(); render();
   });
   $("viewSeg").addEventListener("click", e => {
     const b = e.target.closest("button[data-view]"); if (!b) return;
@@ -491,6 +549,44 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     const c = err && err.code;
     if (c === "PERMISSION_DENIED" || c === "permission-denied") return "The database refused this change. Check the database rules.";
     return "Couldn't save. Check your connection and try again.";
+  }
+
+  // ---------- Voice ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null;
+  if (SR && window.VoiceParse) {
+    const mic = $("micBtn"), label = mic.querySelector("span");
+    mic.hidden = false;
+    const stop = () => { mic.classList.remove("on"); label.textContent = "Say result"; rec = null; };
+    mic.addEventListener("click", () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR();
+      rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 5; rec.continuous = false;
+      mic.classList.add("on"); label.textContent = "Listening…";
+      $("heard").hidden = false; $("heard").textContent = "Say e.g. “Meedeum beat Gwanwoo 11 to 4”";
+      rec.onresult = e => {
+        const r = e.results[e.results.length - 1];
+        $("heard").textContent = `“${r[0].transcript}”`;
+        if (!r.isFinal) return;
+        const roster = players.filter(p => !p.retired);
+        let res = null;
+        for (const alt of r) { res = VoiceParse.parseResult(alt.transcript, roster); if (!res.error) { $("heard").textContent = `Heard “${alt.transcript}”`; break; } }
+        if (res.error) { toast(res.error + " Try again, or tap the players.", true); return; }
+        size = res.winners.length;
+        pick = { win: res.winners, lose: res.losers };
+        $("scoreW").value = res.score ? res.score.winner : "";
+        $("scoreL").value = res.score ? res.score.loser : "";
+        toast("Check the result, then tap Save.");
+        render();
+      };
+      rec.onerror = e => {
+        toast(e.error === "not-allowed" || e.error === "service-not-allowed"
+          ? "Microphone access is blocked. Allow it in your browser settings, or tap the players instead."
+          : e.error === "no-speech" ? "Didn't hear anything. Tap the mic and try again." : "Voice input stopped. Try again.", true);
+      };
+      rec.onend = stop;
+      try { rec.start(); } catch (_) { stop(); }
+    });
   }
 
   // ---------- Storage ----------

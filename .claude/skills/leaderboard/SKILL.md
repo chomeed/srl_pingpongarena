@@ -1,6 +1,6 @@
 ---
 name: leaderboard
-description: Show the current SRL PingpongArena ping-pong ladder (Elo rankings, W-L records, recent matches). Use when someone asks who's on top, the current leaderboard/rankings, someone's rating, or recent ping-pong results.
+description: Show the current SRL PingpongArena ping-pong ladder (overall Elo rankings counting 1v1 and 2v2, W-L records, recent matches; --json also has 1v1-only and 2v2-only ladders). Use when someone asks who's on top, the current leaderboard/rankings, someone's rating, or recent ping-pong results.
 ---
 
 # SRL PingpongArena leaderboard

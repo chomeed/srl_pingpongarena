@@ -63,6 +63,13 @@
       "$other": {
         ".validate": false
       }
+    },
+    "presence": {
+      ".read": true,
+      "$id": {
+        ".write": true,
+        ".validate": "newData.isNumber() && newData.val() <= now"
+      }
     }
   }
 }

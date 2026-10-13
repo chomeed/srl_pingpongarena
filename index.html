@@ -185,13 +185,54 @@ details.howto summary h2 { margin: 0; }
 .howto-body ol, .howto-body ul { padding-left: 1.3em; margin: 0 0 8px; }
 .howto-body code { font-family: var(--mono); font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
 table.examples { margin: 8px 0 4px; }
+/* Phones: compact header, players above the fold, Save bar always reachable */
+.chip, .seg button, .mic, .ghostlink, button.primary, button.ghost, button.link { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms the page on focus */
+.confirm { position: sticky; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); z-index: 5; box-shadow: 0 6px 24px rgba(10, 20, 40, .18); }
+@media (max-width: 640px) {
+  header.board { padding-block: 12px 10px; }
+  header .inner { align-items: center; }
+  h1 { font-size: 1.75rem; line-height: 1; }
+  h1 br { display: none; }
+}
+@media (max-width: 380px) {
+  h1 { font-size: 1.4rem; }
+  .sync span { max-width: 9em; }
+}
+@media (max-width: 640px) {
+  .tagline { display: none; }
+  .sync { font-size: 10px; }
+  .grid { margin-top: 12px; gap: 12px; }
+  section.panel { padding: 14px; }
+  h2 { font-size: 1.3rem; }
+  .logbar { margin-bottom: 8px; }
+  .seg button { padding: 9px 16px; min-height: 40px; }
+  .mic { min-height: 40px; }
+  #logHint { display: none; }
+  .voicehint { margin: 0 0 10px; }
+  .steps { flex-wrap: nowrap; gap: 6px; margin-bottom: 10px; }
+  .step { flex: 1 1 0; padding: 6px 10px; }
+  .step .who { font-size: 15px; }
+  .chips { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+  .chip { min-height: 56px; padding: 10px 8px; font-size: 15px; }
+  .confirm { padding: 12px; gap: 10px; }
+  .confirm .btns { width: 100%; }
+  .confirm .btns button { flex: 1; min-height: 48px; font-size: 16px; }
+  .score { flex-wrap: nowrap; gap: 6px; }
+  .score .opt { display: none; }
+  .score input { width: 3.2em; padding: 6px 4px; }
+  .confirm .btns button { white-space: nowrap; }
+  .confirm p { font-size: 15px; }
+  button.link { padding: 8px 6px; }
+  .roster li { padding: 4px 0; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
 <header class="board">
   <div class="inner">
     <div>
-      <h1>SRL Pingpong<br>Arena<span class="dot"></span></h1>
+      <h1>SRL Pingpong <br>Arena<span class="dot"></span></h1>
       <p class="tagline">Office table-tennis ladder · Elo rated · singles &amp; doubles</p>
     </div>
     <div class="sync" id="sync"><i></i><span>Connecting…</span></div>
@@ -434,13 +475,9 @@ table.examples { margin: 8px 0 4px; }
       $("voiceHint").innerHTML = `Or tap <b>Say result</b> and say: <q>${esc(voiceExample())}</q>`;
     }
   }
-  // A real sentence for the voice hint, built from the current roster.
+  // Example sentence for the voice hint.
   function voiceExample() {
-    const names = players.filter(p => !p.retired).map(p => p.name).sort((a, b) => a.localeCompare(b));
-    const n = names.length;
-    if (size === 2 && n >= 4) return `${names[n - 1]} and ${names[0]} beat ${names[1]} and ${names[n - 2]} 11 to 8`;
-    if (n >= 2) return `${names[n - 1]} beat ${names[0]} 11 to 4`;
-    return size === 2 ? "Hansol and Dohyeon beat Hokyun and Kyoungin 11 to 8" : "Meedeum beat Gwanwoo 11 to 4";
+    return size === 2 ? "A and B beat C and D 11 to 8" : "A beat B 11 to 4";
   }
   function renderRoster(st) {
     if (editingId && document.activeElement && document.activeElement.id === "renameInput") return; // don't wipe typing
@@ -681,7 +718,16 @@ table.examples { margin: 8px 0 4px; }
     const onErr = () => setSync("", "Can't read results – check the database rules");
     store.announce = () => db.ref("announce/requestedAt").set(firebase.database.ServerValue.TIMESTAMP);
     db.ref("announce").on("value", s => { announce = s.val() || {}; renderAnnounce(); });
-    db.ref(".info/connected").on("value", s => setSync(s.val() ? "live" : "", s.val() ? "Live · shared" : "Offline – reconnecting"));
+    // presence: each open page adds itself under presence/ and is removed when it disconnects
+    let connected = false, online = 0;
+    const showSync = () => setSync(connected ? "live" : "", connected ? `Live · ${online || 1} online` : "Offline – reconnecting");
+    const me = db.ref("presence").push();
+    db.ref(".info/connected").on("value", s => {
+      connected = !!s.val();
+      if (connected) me.onDisconnect().remove().then(() => me.set(firebase.database.ServerValue.TIMESTAMP)).catch(() => {});
+      showSync();
+    });
+    db.ref("presence").on("value", s => { online = s.numChildren(); showSync(); }, () => {});
     db.ref("players").on("value", s => { players = list(s).filter(p => p.name); render(); }, onErr);
     db.ref("matches").on("value", s => { matches = list(s).filter(m => m.winner && m.loser); render(); }, onErr);
   }

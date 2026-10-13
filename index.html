@@ -3,6 +3,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SRL PingpongArena</title>
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1f4e9c">
+<script>
+  // Apply a saved theme choice before the page paints (no flash). "auto" follows the device.
+  try { const t = localStorage.getItem("arena-theme"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch (_) {}
+</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏓</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
@@ -54,6 +60,10 @@ header .inner { max-width: 1080px; margin: 0 auto; position: relative; z-index: 
 h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2.2rem, 6vw, 3.4rem); line-height: .95; margin: 0; letter-spacing: .01em; text-transform: uppercase; text-wrap: balance; }
 h1 .dot { display: inline-block; width: .38em; height: .38em; border-radius: 50%; background: var(--ball); margin-left: .12em; vertical-align: .1em; }
 .tagline { margin: 6px 0 0; opacity: .85; font-size: 14px; }
+.headtools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.themebtn { font: inherit; font-size: 12px; font-weight: 600; color: var(--table-ink); background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .3); border-radius: 999px; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
+.themebtn:hover { background: rgba(255, 255, 255, .22); }
+.themebtn:focus-visible { outline: 3px solid var(--ball); outline-offset: 2px; }
 .sync { font-family: var(--mono); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; opacity: .9; display: flex; align-items: center; gap: 8px; }
 .sync i { width: 8px; height: 8px; border-radius: 50%; background: #9fb3d6; display: inline-block; }
 .sync.live i { background: #5be08f; }
@@ -230,6 +240,7 @@ ol.log .w { color: var(--win); font-weight: 600; } ol.log .l { color: var(--loss
 ol.log time { font-size: 13px; color: var(--muted); font-family: var(--mono); }
 button.link { font: inherit; font-size: 13px; background: none; border: 0; color: var(--loss); cursor: pointer; padding: 0 4px; text-decoration: underline; }
 .empty { color: var(--muted); padding: 14px 0; }
+.chips .empty { grid-column: 1 / -1; margin: 0; }
 .more { margin-top: 10px; }
 details.howto { margin-top: 20px; }
 details.howto summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -335,7 +346,10 @@ body.sheet-open { overflow: hidden; }
       <h1>SRL Pingpong <br>Arena<span class="dot"></span></h1>
       <p class="tagline">Office table-tennis ladder · Elo rated · singles &amp; doubles</p>
     </div>
-    <div class="sync" id="sync"><i></i><span>Connecting…</span></div>
+    <div class="headtools">
+      <div class="sync" id="sync"><i></i><span>Connecting…</span></div>
+      <button type="button" class="themebtn" id="themeBtn" aria-label="Theme: follows your device. Tap to change.">◐ Auto</button>
+    </div>
   </div>
 </header>
 
@@ -988,6 +1002,26 @@ body.sheet-open { overflow: hidden; }
       try { rec.start(); } catch (_) { stop(); }
     });
   }
+
+  // ---------- Theme ----------
+  const THEMES = ["auto", "dark", "light"], THEME_LABEL = { auto: "◐ Auto", dark: "☾ Dark", light: "☀ Light" };
+  let theme = "auto";
+  try { theme = localStorage.getItem("arena-theme") || "auto"; } catch (_) {}
+  function applyTheme() {
+    if (theme === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = theme;
+    $("themeBtn").textContent = THEME_LABEL[theme];
+    $("themeBtn").setAttribute("aria-label", theme === "auto" ? "Theme: follows your device. Tap to change." : `Theme: ${theme}. Tap to change.`);
+    const dark = theme === "dark" || (theme === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+    document.querySelector('meta[name="theme-color"]').setAttribute("content", dark ? "#173d79" : "#1f4e9c");
+  }
+  $("themeBtn").addEventListener("click", () => {
+    theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+    try { localStorage.setItem("arena-theme", theme); } catch (_) {}
+    applyTheme();
+    if (openPlayer) renderPlayer(); // redraw the chart in the new colours
+  });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+  applyTheme();
 
   // ---------- Slack announce ----------
   // The page queues a request; a GitHub Action checks every 5 minutes and posts the ladder.

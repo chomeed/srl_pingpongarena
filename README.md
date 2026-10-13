@@ -34,3 +34,10 @@ Every day a GitHub Action (`Daily backup`) saves all players and matches; each b
 To restore: Actions → Daily backup → pick a run → download the `backup-YYYY-MM-DD` file, unzip it, then in Firebase
 open Realtime Database → ⋮ (top right of the data view) → **Import JSON** and choose `srl-pingpongarena.json`.
 Importing replaces the current players and matches with the backup.
+
+## Slack command (`/pingpong`)
+Runs on Cloudflare Workers (free). Code: `slack-command/`, rating rules shared with the leaderboard script in `arena-core.mjs`.
+- `/pingpong` ladder · `/pingpong Hansol` player stats · `/pingpong Meedeum beat Gwanwoo 11-4` log a match (2v2: "A and B beat C and D")
+- Every request is checked against Slack's signing secret (and must be under 5 minutes old) and our workspace ID.
+- Deployed by the `Deploy Slack command` workflow using repository secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+  `SLACK_SIGNING_SECRET`, `SLACK_TEAM_ID`.

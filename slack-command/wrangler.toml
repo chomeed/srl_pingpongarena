@@ -1,0 +1,9 @@
+name = "srl-pingpong-slack"
+main = "worker.mjs"
+compatibility_date = "2024-09-23"
+workers_dev = true
+
+[vars]
+DB_URL = "https://srl-pingpongarena-default-rtdb.asia-southeast1.firebasedatabase.app"
+# Secrets (set by the deploy workflow from GitHub secrets, never stored here):
+#   SLACK_SIGNING_SECRET, SLACK_TEAM_ID

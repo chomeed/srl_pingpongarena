@@ -85,4 +85,4 @@
 
   const api = { parseResult, similarity, findScore };
   if (typeof module !== 'undefined') module.exports = api; else root.VoiceParse = api;
-})(this);
+})(typeof globalThis !== 'undefined' ? globalThis : this);

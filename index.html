@@ -161,6 +161,9 @@ td.elo { font-family: var(--mono); font-size: 16px; }
 .form { display: inline-flex; gap: 3px; }
 .form b { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .form b.w { background: var(--win); } .form b.l { background: var(--loss); }
+.badges { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: 1px; }
+.badge { font-size: 13px; font-weight: 600; font-family: var(--mono); line-height: 1; cursor: default; }
+.badgekey { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
 .provisional { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 4px; }
 
 /* History */
@@ -294,13 +297,14 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
           <button type="button" data-view="d" aria-pressed="false">2v2</button>
         </div>
       </div>
-      <p class="hint">Overall counts every match; the 1v1 and 2v2 tabs count only that format. Everyone starts at 1000, K-factor 32; 2v2 uses each team's average rating. <span class="provisional">(P)</span> = fewer than 5 games.</p>
+      <p class="hint">Overall counts every match (2v2 at half weight); the 1v1 and 2v2 tabs count only that format. Everyone starts at 1000. See How scoring works below. <span class="provisional">(P)</span> = fewer than 5 games.</p>
       <div class="tablewrap">
         <table>
           <thead><tr><th>#</th><th>Player</th><th class="num">Elo</th><th class="num">W–L</th><th>Last 5</th></tr></thead>
           <tbody id="ladder"></tbody>
         </table>
       </div>
+      <p class="badgekey">👑 #1 · 🔥 3+ wins in a row · ⚔️ Giant killer: beat someone rated 100+ higher this week</p>
       <p class="slackline"><button type="button" class="ghostlink" id="announceBtn">Announce in Slack</button>
         <span id="announceStatus">Posts the ladder to Slack within about 10 minutes. It also posts automatically every Monday.</span>
         <a class="quiet" href="https://github.com/chomeed/srl_pingpongarena/actions/workflows/slack-leaderboard.yml" target="_blank" rel="noopener">Post now on GitHub ↗</a></p>
@@ -336,7 +340,23 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
       <h3>2v2</h3>
       <p>Each team's rating is the average of its two players. The points are worked out the same way, then every winner gains them and every loser loses them.</p>
       <h3>The three ladders</h3>
-      <p><b>Overall</b> counts every match, 1v1 and 2v2. The <b>1v1</b> and <b>2v2</b> tabs keep separate ratings that only count that format, so you can see who is strongest at each.</p>
+      <table class="examples">
+        <thead><tr><th>Ladder</th><th>Counts</th><th class="num">K-factor</th></tr></thead>
+        <tbody>
+          <tr><td><b>Overall</b></td><td>1v1 and 2v2</td><td class="num">1v1: 32 · 2v2: 16</td></tr>
+          <tr><td><b>1v1</b></td><td>1v1 only</td><td class="num">32</td></tr>
+          <tr><td><b>2v2</b></td><td>2v2 only</td><td class="num">32</td></tr>
+        </tbody>
+      </table>
+      <p>In <b>Overall</b>, a 2v2 match counts half (an even game moves ±8 instead of ±16). In doubles you share the win with a partner, so a weaker player teamed with a strong one can't climb the main ladder as fast as by winning 1v1. The <b>1v1</b> and <b>2v2</b> tabs keep their own full-weight ratings, so you can see who is strongest at each format.</p>
+      <p>The points shown next to a match in Recent matches are its Overall points.</p>
+      <h3>Badges</h3>
+      <ul>
+        <li>👑 Current #1 on the ladder you're viewing.</li>
+        <li>🔥 Win streak of 3 or more; the number is the streak length. One loss ends it.</li>
+        <li>⚔️ Giant killer: won against a player (or team) rated 100+ points higher, in the last 7 days.</li>
+      </ul>
+      <p>Badges follow the tab you're viewing: a 2v2 streak shows on the 2v2 tab, and both formats count toward Overall.</p>
       <h3>Good to know</h3>
       <ul>
         <li>The score (e.g. 11–4) is saved for the record but doesn't change points. Only the win counts.</li>
@@ -370,10 +390,13 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
 
   // ---------- Elo ----------
   const expected = (ra, rb) => 1 / (1 + Math.pow(10, (rb - ra) / 400));
+  const GIANT_GAP = 100, GIANT_DAYS = 7, STREAK_MIN = 3;
   const isDoubles = m => !!(m.winner2 && m.loser2);
   const teams = m => isDoubles(m) ? [[m.winner, m.winner2], [m.loser, m.loser2]] : [[m.winner], [m.loser]];
   const avg = (ids, st, k) => ids.reduce((t, id) => t + st[id][k].elo, 0) / ids.length;
-  function swing(W, L, st, k) { return Math.round(K * (1 - expected(avg(W, st, k), avg(L, st, k)))); }
+  // 2v2 counts half in Overall so a strong partner can't carry someone up the main ladder
+  const kFactor = (k, doubles) => (k === "o" && doubles ? K / 2 : K);
+  function swing(W, L, st, k) { return Math.round(kFactor(k, W.length === 2) * (1 - expected(avg(W, st, k), avg(L, st, k)))); }
   function compute() {
     const st = {};
     const blank = () => ({ elo: START, w: 0, l: 0, form: [] });
@@ -386,7 +409,9 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
       // every match moves the overall rating; it also moves the 1v1-only or 2v2-only rating
       for (const k of ["o", isDoubles(m) ? "d" : "s"]) {
         const d = swing(W, L, st, k);
-        for (const id of W) { const r = st[id][k]; r.elo += d; r.w++; r.form.push("w"); }
+        // Giant killer: the winning side was rated 100+ below the losing side before this match
+        const upset = avg(L, st, k) - avg(W, st, k) >= GIANT_GAP;
+        for (const id of W) { const r = st[id][k]; r.elo += d; r.w++; r.form.push("w"); if (upset) r.giant = m.at; }
         for (const id of L) { const r = st[id][k]; r.elo -= d; r.l++; r.form.push("l"); }
         if (k === "o") deltas[m.id] = d;
       }
@@ -451,7 +476,7 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
       const r = p[view], games = r.w + r.l;
       const form = r.form.slice(-5).map(x => `<b class="${x}" title="${x === "w" ? "Win" : "Loss"}"></b>`).join("");
       return `<tr class="${i === 0 && games ? "top1" : ""}"><td class="rank">${i + 1}</td>
-        <td class="name">${esc(p.name)}${games < 5 ? '<span class="provisional">(P)</span>' : ""}</td>
+        <td class="name">${esc(p.name)}${games < 5 ? '<span class="provisional">(P)</span>' : ""}${badges(r, i === 0 && games > 0)}</td>
         <td class="num elo">${r.elo}</td><td class="num">${r.w}–${r.l}</td><td><span class="form">${form}</span></td></tr>`;
     }).join("") : '<tr><td colspan="5" class="empty">The ladder fills in as soon as players are added.</td></tr>';
 
@@ -475,6 +500,18 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
       $("voiceHint").innerHTML = `Or tap <b>Say result</b> and say: <q>${esc(voiceExample())}</q>`;
     }
   }
+  // Ladder badges: 👑 current #1, 🔥 win streak, ⚔️ recent upset win
+  function badges(r, top) {
+    let streak = 0;
+    for (let i = r.form.length - 1; i >= 0 && r.form[i] === "w"; i--) streak++;
+    const out = [];
+    if (top) out.push('<span class="badge" title="Current #1">👑</span>');
+    if (streak >= STREAK_MIN) out.push(`<span class="badge" title="${streak} wins in a row">🔥${streak}</span>`);
+    if (r.giant && Date.now() - r.giant < GIANT_DAYS * 864e5)
+      out.push(`<span class="badge" title="Giant killer: beat someone rated ${GIANT_GAP}+ higher in the last ${GIANT_DAYS} days">⚔️</span>`);
+    return out.length ? `<span class="badges">${out.join("")}</span>` : "";
+  }
+
   // Example sentence for the voice hint.
   function voiceExample() {
     return size === 2 ? "A and B beat C and D 11 to 8" : "A beat B 11 to 4";

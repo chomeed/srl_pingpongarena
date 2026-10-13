@@ -7,7 +7,8 @@ Everyone starts at 1000, K-factor 32; fewer than 5 games is provisional (P).
 Ratings are replayed from the full match history, so deleting a wrong match corrects everyone's rating.
 
 - **2v2:** switch to 2v2, tap the two winners then the two losers. Each team's rating is the average of its two players.
-- **Ladders:** *Overall* counts every match; the *1v1* and *2v2* tabs keep format-only ratings.
+- **Ladders:** *Overall* counts every match, with 2v2 at half weight (K 16); the *1v1* and *2v2* tabs keep format-only ratings at full weight.
+- **Badges:** 👑 current #1, 🔥 3+ win streak, ⚔️ beat someone rated 100+ higher in the last 7 days.
 - **Voice:** tap **Say result** and say e.g. "Meedeum beat Gwanwoo 11 to 4" or "Hansol and Dohyeon beat Hokyun and Kyoungin".
   The players and score are filled in; check and tap Save. Works in Chrome and Safari.
 - **Score is optional** (e.g. 11–7). It is shown in the history but does not change Elo; only the win counts.

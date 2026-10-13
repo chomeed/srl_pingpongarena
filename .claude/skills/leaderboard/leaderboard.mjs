@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Prints the current SRL PingpongArena ladder from the Firebase Realtime Database.
 // Usage: node leaderboard.mjs [--recent N] [--json]
-// Elo rules must match index.html: start 1000, K 32, replay matches oldest first.
+// Elo rules must match index.html: start 1000, K 32 (2v2 counts K 16 in Overall), replay matches oldest first.
 const DB = process.env.ARENA_DB_URL || "https://srl-pingpongarena-default-rtdb.asia-southeast1.firebasedatabase.app";
 const START = 1000, K = 32;
 
@@ -28,7 +28,8 @@ for (const m of matches) {
   // overall counts every match; "s"/"d" count only 1v1/2v2
   for (const k of ["o", isDoubles(m) ? "d" : "s"]) {
     const avg = ids => ids.reduce((t, id) => t + st[id][k].elo, 0) / ids.length;
-    const d = Math.round(K * (1 - 1 / (1 + 10 ** ((avg(L) - avg(W)) / 400))));
+    const kf = k === "o" && isDoubles(m) ? K / 2 : K; // 2v2 counts half in Overall
+    const d = Math.round(kf * (1 - 1 / (1 + 10 ** ((avg(L) - avg(W)) / 400))));
     for (const id of W) { const r = st[id][k]; r.elo += d; r.w++; r.form += "W"; }
     for (const id of L) { const r = st[id][k]; r.elo -= d; r.l++; r.form += "L"; }
     if (k === "o") m.delta = d;

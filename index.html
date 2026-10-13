@@ -122,6 +122,11 @@ details.add summary { cursor: pointer; font-weight: 600; color: var(--table); }
 .voicehint { font-size: 13px; color: var(--muted); margin: -4px 0 12px; overflow-wrap: anywhere; }
 .voicehint q { color: var(--ink); font-style: italic; }
 .heard { font-size: 14px; color: var(--muted); margin: -4px 0 12px; font-style: italic; overflow-wrap: anywhere; }
+.slackline { margin: 14px 0 0; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--muted); }
+.slackline span { min-width: 0; }
+a.ghostlink { font-weight: 600; font-size: 14px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; white-space: nowrap; }
+a.ghostlink:hover { border-color: var(--table); }
+a.ghostlink:focus-visible { outline: 3px solid var(--ball); outline-offset: 2px; }
 .headrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
 .headrow .seg { margin-bottom: 0; }
 .tag { font-size: 11px; font-family: var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
@@ -254,6 +259,8 @@ table.examples { margin: 8px 0 4px; }
           <tbody id="ladder"></tbody>
         </table>
       </div>
+      <p class="slackline"><a class="ghostlink" href="https://github.com/chomeed/srl_pingpongarena/actions/workflows/slack-leaderboard.yml" target="_blank" rel="noopener">Post ladder to Slack ↗</a>
+        <span>Opens GitHub: tap <b>Run workflow</b>. Needs access to the repo. Also posts automatically every Monday.</span></p>
     </section>
   </div>
 

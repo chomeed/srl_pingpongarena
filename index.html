@@ -36,6 +36,8 @@
   --win: #4cc684; --loss: #f07676; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
 .wrap { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 0 48px; }
 
@@ -106,6 +108,20 @@ button:focus-visible, input:focus-visible, .chip:focus-visible { outline: 3px so
 details.add { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
 details.add summary { cursor: pointer; font-weight: 600; color: var(--table); }
 :root:not([data-theme="light"]) details.add summary { color: var(--ink); }
+.score { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; font-size: 14px; }
+.score input { width: 4.2em; font: inherit; font-family: var(--mono); padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: center; }
+.score .opt { color: var(--muted); }
+.roster { list-style: none; margin: 12px 0 0; padding: 0; }
+.roster li { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.roster li:last-child { border-bottom: 0; }
+.roster .pname { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.roster .pname small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.roster .acts { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+.roster .note { width: 100%; font-size: 13px; color: var(--muted); }
+.roster input { flex: 1 1 140px; min-width: 0; font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.roster h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 0 0; font-weight: 600; }
+button.link.plain { color: var(--ink); }
+.sc { font-family: var(--mono); font-size: 13px; color: var(--muted); }
 form.addform { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 form.addform input { flex: 1 1 180px; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 
@@ -163,6 +179,11 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
 
       <div class="confirm" id="confirm" hidden>
         <p><span id="confirmText"></span><br><span class="delta" id="confirmDelta"></span></p>
+        <label class="score" for="scoreW"><span>Score <span class="opt">(optional)</span></span>
+          <input id="scoreW" type="number" inputmode="numeric" min="0" max="99" placeholder="W" aria-label="Winner's score">
+          <span>–</span>
+          <input id="scoreL" type="number" inputmode="numeric" min="0" max="99" placeholder="L" aria-label="Loser's score">
+        </label>
         <div class="btns">
           <button class="ghost" id="resetBtn" type="button">Clear</button>
           <button class="primary" id="saveBtn" type="button">Save result</button>
@@ -171,11 +192,12 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
       <div class="toast" id="toast" role="status"></div>
 
       <details class="add" id="addDetails">
-        <summary>Add a player</summary>
+        <summary>Manage players</summary>
         <form class="addform" id="addForm">
           <input id="newName" name="newName" maxlength="32" placeholder="Name" autocomplete="off" required>
           <button class="primary" type="submit">Add</button>
         </form>
+        <ul class="roster" id="roster"></ul>
       </details>
     </section>
 
@@ -211,14 +233,17 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   let matches = [];   // {id, winner, loser, at}
   let pick = { win: null, lose: null };
   let showCount = 15;
-  let store = null;   // adapter: {addPlayer, addMatch, deleteMatch}
+  let store = null;   // adapter: {addPlayer, addMatch, deleteMatch, renamePlayer, setRetired, removePlayer}
   let pendingDelete = null;
+  let pendingRemove = null; // player id awaiting remove confirmation
+  let editingId = null;     // player id being renamed
 
   // ---------- Elo ----------
   const expected = (ra, rb) => 1 / (1 + Math.pow(10, (rb - ra) / 400));
   function compute() {
     const st = {};
     for (const p of players) st[p.id] = { ...p, elo: START, w: 0, l: 0, form: [], last: 0 };
+    // retired players stay in the replay so their opponents' ratings don't change
     const deltas = {};
     for (const m of [...matches].sort((a, b) => a.at - b.at)) {
       const W = st[m.winner], L = st[m.loser];
@@ -239,15 +264,16 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   function render() {
     const { st, deltas } = compute();
-    const ranked = Object.values(st).sort((a, b) => b.elo - a.elo || (b.w - b.l) - (a.w - a.l) || a.name.localeCompare(b.name));
+    const active = players.filter(p => !p.retired);
+    const ranked = Object.values(st).filter(p => !p.retired).sort((a, b) => b.elo - a.elo || (b.w - b.l) - (a.w - a.l) || a.name.localeCompare(b.name));
 
     // chips (alphabetical so people find themselves fast)
     const chips = $("chips");
-    if (!players.length) {
+    if (!active.length) {
       chips.innerHTML = '<p class="empty">No players yet. Add the first players below to start the ladder.</p>';
       $("addDetails").open = true;
     } else {
-      chips.innerHTML = [...players].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
+      chips.innerHTML = [...active].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
         const cls = p.id === pick.win ? "is-win" : p.id === pick.lose ? "is-lose" : "";
         const dis = pick.win && pick.lose && !cls ? "disabled" : "";
         return `<button type="button" class="chip ${cls}" data-id="${esc(p.id)}" ${dis}>${esc(p.name)}<small>${st[p.id].elo}</small></button>`;
@@ -261,7 +287,7 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     $("loseName").classList.toggle("empty", !pick.lose);
     $("stepWin").classList.toggle("filled", !!pick.win);
     $("stepLose").classList.toggle("filled", !!pick.lose);
-    $("stepWin").classList.toggle("active", !pick.win && players.length > 0);
+    $("stepWin").classList.toggle("active", !pick.win && active.length > 0);
     $("stepLose").classList.toggle("active", !!pick.win && !pick.lose);
 
     if (pick.win && pick.lose && st[pick.win] && st[pick.lose]) {
@@ -287,12 +313,37 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     $("log").innerHTML = recent.length ? recent.slice(0, showCount).map(m => {
       const confirming = pendingDelete === m.id;
       return `<li><span class="m"><span class="w">${esc(nameOf(m.winner))}</span> beat <span class="l">${esc(nameOf(m.loser))}</span>
+        ${m.winnerScore != null ? `<span class="sc">${m.winnerScore}–${m.loserScore}</span>` : ""}
         <span class="delta">±${deltas[m.id] ?? "–"}</span></span>
         <span><time>${fmt(m.at)}</time> ${confirming
           ? `<button class="link" data-del="${esc(m.id)}" data-sure="1">Confirm delete</button><button class="link" data-cancel="1" style="color:var(--muted)">Keep</button>`
           : `<button class="link" data-del="${esc(m.id)}">Delete</button>`}</span></li>`;
     }).join("") : '<li class="empty">No matches yet. Log your first game above.</li>';
     $("moreBtn").hidden = recent.length <= showCount;
+    renderRoster(st);
+  }
+  function renderRoster(st) {
+    if (editingId && document.activeElement && document.activeElement.id === "renameInput") return; // don't wipe typing
+    const row = p => {
+      const games = st[p.id].w + st[p.id].l;
+      if (editingId === p.id) return `<li><form class="addform" id="renameForm" style="margin:0;width:100%">
+          <input id="renameInput" maxlength="32" value="${esc(p.name)}" aria-label="New name for ${esc(p.name)}" required>
+          <button class="primary" type="submit">Save</button><button class="ghost" type="button" data-act="cancel">Cancel</button></form></li>`;
+      if (pendingRemove === p.id) return `<li><span class="pname">${esc(p.name)}</span>
+          <span class="acts"><button class="link" data-act="remove-yes" data-id="${esc(p.id)}">${games ? "Hide" : "Remove"}</button><button class="link plain" data-act="cancel">Keep</button></span>
+          <span class="note">${games
+            ? `${esc(p.name)} has ${games} match${games > 1 ? "es" : ""}. They'll be hidden from the ladder, but their matches stay so other players' ratings don't change. You can restore them later.`
+            : `${esc(p.name)} has no matches and will be removed.`}</span></li>`;
+      if (p.retired) return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].elo} · ${games} game${games === 1 ? "" : "s"}</small></span>
+          <span class="acts"><button class="link plain" data-act="restore" data-id="${esc(p.id)}">Restore</button></span></li>`;
+      return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].elo}</small></span>
+          <span class="acts"><button class="link plain" data-act="rename" data-id="${esc(p.id)}">Rename</button><button class="link" data-act="remove" data-id="${esc(p.id)}">Remove</button></span></li>`;
+    };
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    const act = players.filter(p => !p.retired).sort(byName), ret = players.filter(p => p.retired).sort(byName);
+    $("roster").innerHTML = act.map(row).join("") + (ret.length ? `<li style="border:0;padding:0"><h3>Hidden players</h3></li>` + ret.map(row).join("") : "");
+    const inp = $("renameInput");
+    if (inp && document.activeElement !== inp) { inp.focus(); inp.select(); }
   }
   function fmt(t) {
     const d = new Date(t), now = new Date();
@@ -317,13 +368,23 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     else if (!pick.lose) pick.lose = id;
     render();
   });
-  $("resetBtn").addEventListener("click", () => { pick = { win: null, lose: null }; render(); });
+  $("resetBtn").addEventListener("click", () => { pick = { win: null, lose: null }; $("scoreW").value = ""; $("scoreL").value = ""; render(); });
   $("saveBtn").addEventListener("click", async () => {
     if (!pick.win || !pick.lose || !store) return;
+    const ws = $("scoreW").value.trim(), ls = $("scoreL").value.trim();
+    const match = { winner: pick.win, loser: pick.lose, at: Date.now() };
+    if (ws !== "" || ls !== "") {
+      const w = Number(ws), l = Number(ls);
+      const ok = n => Number.isInteger(n) && n >= 0 && n <= 99;
+      if (ws === "" || ls === "" || !ok(w) || !ok(l)) { toast("Enter both scores (0–99), or leave both empty.", true); return; }
+      if (w <= l) { toast("The winner's score must be higher than the loser's.", true); return; }
+      match.winnerScore = w; match.loserScore = l;
+    }
     const btn = $("saveBtn"); btn.disabled = true;
     try {
-      await store.addMatch({ winner: pick.win, loser: pick.lose, at: Date.now() });
+      await store.addMatch(match);
       pick = { win: null, lose: null };
+      $("scoreW").value = ""; $("scoreL").value = "";
       toast("Saved. Ratings updated.");
     } catch (err) { toast(errMsg(err), true); }
     btn.disabled = false; render();
@@ -346,6 +407,38 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
     catch (err) { toast(errMsg(err), true); }
     render();
   });
+  const cleanName = v => v.trim().replace(/\s+/g, " ");
+  $("roster").addEventListener("click", async e => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    const id = b.dataset.id, p = players.find(x => x.id === id);
+    const a = b.dataset.act;
+    if (a === "cancel") { editingId = pendingRemove = null; render(); return; }
+    if (a === "rename") { editingId = id; pendingRemove = null; render(); return; }
+    if (a === "remove") { pendingRemove = id; editingId = null; render(); return; }
+    if (!p || !store) return;
+    try {
+      if (a === "remove-yes") {
+        pendingRemove = null;
+        if (pick.win === id || pick.lose === id) pick = { win: null, lose: null };
+        const played = matches.some(m => m.winner === id || m.loser === id);
+        if (played) { await store.setRetired(id, true); toast(`${p.name} is hidden from the ladder.`); }
+        else { await store.removePlayer(id); toast(`${p.name} was removed.`); }
+      } else if (a === "restore") { await store.setRetired(id, false); toast(`${p.name} is back on the ladder.`); }
+    } catch (err) { toast(errMsg(err), true); }
+    render();
+  });
+  $("roster").addEventListener("submit", async e => {
+    e.preventDefault();
+    const id = editingId, p = players.find(x => x.id === id); if (!p || !store) return;
+    const name = cleanName($("renameInput").value);
+    if (!name) return;
+    if (players.some(x => x.id !== id && x.name.toLowerCase() === name.toLowerCase())) { toast(`${name} is already taken.`, true); return; }
+    editingId = null;
+    try { if (name !== p.name) { await store.renamePlayer(id, name); toast(`${p.name} is now ${name}.`); } }
+    catch (err) { toast(errMsg(err), true); }
+    $("renameInput") && $("renameInput").blur();
+    render();
+  });
   $("moreBtn").addEventListener("click", () => { showCount += 30; render(); });
   function errMsg(err) {
     const c = err && err.code;
@@ -366,6 +459,9 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
       addPlayer: async p => { data.players.push({ id: uid(), ...p }); save(); },
       addMatch: async m => { data.matches.push({ id: uid(), ...m }); save(); },
       deleteMatch: async id => { data.matches = data.matches.filter(m => m.id !== id); save(); },
+      renamePlayer: async (id, name) => { data.players.find(p => p.id === id).name = name; save(); },
+      setRetired: async (id, on) => { const p = data.players.find(p => p.id === id); if (on) p.retired = true; else delete p.retired; save(); },
+      removePlayer: async id => { data.players = data.players.filter(p => p.id !== id); save(); },
     };
   }
 
@@ -383,6 +479,9 @@ footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
       addPlayer: p => db.ref("players").push(p),
       addMatch: m => db.ref("matches").push(m),
       deleteMatch: id => db.ref("matches/" + id).remove(),
+      renamePlayer: (id, name) => db.ref(`players/${id}/name`).set(name),
+      setRetired: (id, on) => on ? db.ref(`players/${id}/retired`).set(true) : db.ref(`players/${id}/retired`).remove(),
+      removePlayer: id => db.ref("players/" + id).remove(),
     };
     const list = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
     const onErr = () => setSync("", "Can't read results – check the database rules");

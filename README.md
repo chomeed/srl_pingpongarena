@@ -6,6 +6,14 @@ Tap the winner, tap the loser, press **Save result**. Results are shared live th
 Everyone starts at 1000, K-factor 32; fewer than 5 games is provisional (P).
 Ratings are replayed from the full match history, so deleting a wrong match corrects everyone's rating.
 
+- **Score is optional** (e.g. 11–7). It is shown in the history but does not change Elo; only the win counts.
+- **Manage players:** rename anyone, or remove them. A player with matches is hidden instead of deleted, so their
+  opponents' ratings stay the same; hidden players can be restored.
+
+## Leaderboard skill
+`.claude/skills/leaderboard` lets Claude answer "who's top of the ladder?". It can also be run directly:
+`node .claude/skills/leaderboard/leaderboard.mjs --recent 5`
+
 ## Setup (once)
 1. **GitHub Pages:** Settings → Pages → Source: **GitHub Actions**. Every push to the default branch redeploys.
 2. **Firebase:** create a project at https://console.firebase.google.com (free Spark plan),

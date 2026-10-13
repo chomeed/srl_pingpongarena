@@ -3,10 +3,11 @@
     "players": {
       ".read": true,
       "$id": {
-        ".write": "!data.exists() && newData.exists()",
-        ".validate": "newData.hasChildren(['name', 'createdAt']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 32 && newData.child('createdAt').isNumber()",
-        "name": { ".validate": true },
-        "createdAt": { ".validate": true },
+        ".write": true,
+        ".validate": "newData.hasChildren(['name', 'createdAt'])",
+        "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 32" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "retired": { ".validate": "newData.isBoolean()" },
         "$other": { ".validate": false }
       }
     },
@@ -14,10 +15,12 @@
       ".read": true,
       "$id": {
         ".write": "(!data.exists() && newData.exists()) || !newData.exists()",
-        ".validate": "newData.hasChildren(['winner', 'loser', 'at']) && newData.child('winner').isString() && newData.child('loser').isString() && newData.child('winner').val() != newData.child('loser').val() && root.child('players').child(newData.child('winner').val()).exists() && root.child('players').child(newData.child('loser').val()).exists() && newData.child('at').isNumber()",
-        "winner": { ".validate": true },
-        "loser": { ".validate": true },
-        "at": { ".validate": true },
+        ".validate": "newData.hasChildren(['winner', 'loser', 'at']) && newData.child('winner').val() != newData.child('loser').val() && root.child('players').child(newData.child('winner').val()).exists() && root.child('players').child(newData.child('loser').val()).exists() && (newData.hasChildren(['winnerScore', 'loserScore']) || (!newData.hasChild('winnerScore') && !newData.hasChild('loserScore')))",
+        "winner": { ".validate": "newData.isString()" },
+        "loser": { ".validate": "newData.isString()" },
+        "at": { ".validate": "newData.isNumber()" },
+        "winnerScore": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99 && newData.val() > newData.parent().child('loserScore').val()" },
+        "loserScore": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
         "$other": { ".validate": false }
       }
     }

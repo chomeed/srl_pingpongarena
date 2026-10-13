@@ -9,8 +9,3 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "757924771390",
   appId: "1:757924771390:web:1c1a7bd706024d7d65836f",
 };
-
-// Admin account for unlocking edits (rename/remove players, delete older matches).
-// Create it in Firebase → Authentication → Users with this email and a password of your choice.
-// Must match the email in database.rules.json.
-window.ARENA_ADMIN_EMAIL = "admin@srl-pingpongarena.app";

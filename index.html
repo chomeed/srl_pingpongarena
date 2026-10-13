@@ -142,11 +142,6 @@ details.add summary { cursor: pointer; font-weight: 600; color: var(--table); }
 .roster .acts { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
 .roster .note { width: 100%; font-size: 13px; color: var(--muted); }
 .roster input { flex: 1 1 140px; min-width: 0; font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
-.admin { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
-.admin form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-.admin input { flex: 1 1 160px; min-width: 0; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
-.admin .unlocked { color: var(--win); font-weight: 600; }
-.lockednote { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
 .roster h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 0 0; font-weight: 600; }
 button.link.plain { color: var(--ink); }
 .sc { font-family: var(--mono); font-size: 13px; color: var(--muted); }
@@ -287,7 +282,6 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
           <button class="primary" type="submit">Add</button>
         </form>
         <ul class="roster" id="roster"></ul>
-        <div class="admin" id="adminBox"></div>
       </details>
     </section>
 
@@ -316,7 +310,6 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
   <section class="panel history" aria-labelledby="his-h">
     <h2 id="his-h">Recent matches</h2>
     <ol class="log" id="log"></ol>
-    <p class="lockednote" id="lockedNote" hidden>Saved a wrong result? Tap <b>Undo</b> within 2 minutes. Older matches can only be deleted by an admin (unlock under Manage players).</p>
     <div class="more"><button class="ghost" id="moreBtn" type="button" hidden>Show more</button></div>
   </section>
 
@@ -357,7 +350,6 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script src="voice-parse.js"></script>
 <script>
@@ -372,9 +364,6 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
   let showCount = 15;
   let store = null;   // adapter: {addPlayer, addMatch, deleteMatch, renamePlayer, setRetired, removePlayer}
   let pendingDelete = null;
-  let isAdmin = false;      // signed in with the admin password (always true in on-device mode)
-  const UNDO_MS = 2 * 60 * 1000; // anyone can undo a match this soon after it was saved
-  const canDelete = m => isAdmin || Date.now() - m.at < UNDO_MS - 5000;
   let pendingRemove = null; // player id awaiting remove confirmation
   let editingId = null;     // player id being renamed
   let announce = null;      // {requestedAt, postedAt} from the database; null when not connected
@@ -475,54 +464,17 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
         ${isDoubles(m) ? '<span class="tag">2v2</span>' : ""}
         ${m.winnerScore != null ? `<span class="sc">${m.winnerScore}–${m.loserScore}</span>` : ""}
         <span class="delta">±${deltas[m.id] ?? "–"}</span></span>
-        <span><time>${fmt(m.at)}</time> ${!canDelete(m) ? "" : confirming
-          ? `<button class="link" data-del="${esc(m.id)}" data-sure="1">Confirm ${isAdmin ? "delete" : "undo"}</button><button class="link" data-cancel="1" style="color:var(--muted)">Keep</button>`
-          : `<button class="link" data-del="${esc(m.id)}">${isAdmin ? "Delete" : "Undo"}</button>`}</span></li>`;
+        <span><time>${fmt(m.at)}</time> ${confirming
+          ? `<button class="link" data-del="${esc(m.id)}" data-sure="1">Confirm delete</button><button class="link" data-cancel="1" style="color:var(--muted)">Keep</button>`
+          : `<button class="link" data-del="${esc(m.id)}">Delete</button>`}</span></li>`;
     }).join("") : '<li class="empty">No matches yet. Log your first game above.</li>';
     $("moreBtn").hidden = recent.length <= showCount;
-    $("lockedNote").hidden = isAdmin || !recent.length;
     renderRoster(st);
-    renderAdmin();
     if (!$("micBtn").hidden) {
       $("voiceHint").hidden = false;
       $("voiceHint").innerHTML = `Or tap <b>Say result</b> and say: <q>${esc(voiceExample())}</q>`;
     }
   }
-  // ---------- Admin unlock ----------
-  let adminApi = null; // {signIn(pw), signOut()} when Firebase auth is available
-  function renderAdmin() {
-    const box = $("adminBox");
-    if (!adminApi) { box.hidden = true; return; }
-    box.hidden = false;
-    if (isAdmin) {
-      if (box.dataset.state === "on") return;
-      box.dataset.state = "on";
-      box.innerHTML = `<span class="unlocked">Editing unlocked.</span> You can rename, hide and remove players and delete any match.
-        <button type="button" class="link plain" id="lockBtn">Lock</button>`;
-    } else {
-      if (box.dataset.state === "off") return; // keep a half-typed password
-      box.dataset.state = "off";
-      box.innerHTML = `Renaming or removing players and deleting older matches needs the admin password.
-        <form id="unlockForm"><input id="adminPw" type="password" autocomplete="current-password" placeholder="Admin password" aria-label="Admin password" required>
-        <button class="ghost" type="submit">Unlock</button></form>`;
-    }
-  }
-  $("adminBox").addEventListener("submit", async e => {
-    e.preventDefault();
-    const pw = $("adminPw").value; if (!pw || !adminApi) return;
-    try { await adminApi.signIn(pw); toast("Editing unlocked."); }
-    catch (err) {
-      const c = (err && err.code) || "";
-      toast(/wrong-password|invalid-credential|invalid-login|user-not-found/.test(c) ? "Wrong admin password."
-        : /too-many-requests/.test(c) ? "Too many tries. Wait a few minutes and try again."
-        : /operation-not-allowed|configuration-not-found/.test(c) ? "Admin sign-in isn't set up in Firebase yet."
-        : "Couldn't unlock. Check your connection and try again.", true);
-    }
-  });
-  $("adminBox").addEventListener("click", async e => {
-    if (e.target.id === "lockBtn" && adminApi) { await adminApi.signOut(); toast("Editing locked."); }
-  });
-
   // Example sentence for the voice hint.
   function voiceExample() {
     return size === 2 ? "A and B beat C and D 11 to 8" : "A beat B 11 to 4";
@@ -540,9 +492,9 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
             ? `${esc(p.name)} has ${games} match${games > 1 ? "es" : ""}. They'll be hidden from the ladder, but their matches stay so other players' ratings don't change. You can restore them later.`
             : `${esc(p.name)} has no matches and will be removed.`}</span></li>`;
       if (p.retired) return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].o.elo} · ${games} game${games === 1 ? "" : "s"}</small></span>
-          ${isAdmin ? `<span class="acts"><button class="link plain" data-act="restore" data-id="${esc(p.id)}">Restore</button></span>` : ""}</li>`;
+          <span class="acts"><button class="link plain" data-act="restore" data-id="${esc(p.id)}">Restore</button></span></li>`;
       return `<li><span class="pname">${esc(p.name)}<small>${st[p.id].o.elo}</small></span>
-          ${isAdmin ? `<span class="acts"><button class="link plain" data-act="rename" data-id="${esc(p.id)}">Rename</button><button class="link" data-act="remove" data-id="${esc(p.id)}">Remove</button></span>` : ""}</li>`;
+          <span class="acts"><button class="link plain" data-act="rename" data-id="${esc(p.id)}">Rename</button><button class="link" data-act="remove" data-id="${esc(p.id)}">Remove</button></span></li>`;
     };
     const byName = (a, b) => a.name.localeCompare(b.name);
     const act = players.filter(p => !p.retired).sort(byName), ret = players.filter(p => p.retired).sort(byName);
@@ -657,9 +609,7 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
   $("moreBtn").addEventListener("click", () => { showCount += 30; render(); });
   function errMsg(err) {
     const c = err && err.code;
-    if (c === "PERMISSION_DENIED" || c === "permission-denied") return isAdmin
-      ? "The database refused this change. Check the database rules."
-      : "Only an admin can do that. Unlock editing under Manage players.";
+    if (c === "PERMISSION_DENIED" || c === "permission-denied") return "The database refused this change. Check the database rules.";
     return "Couldn't save. Check your connection and try again.";
   }
 
@@ -724,7 +674,7 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
         ? "The ladder was announced less than 10 minutes ago. Try again a bit later." : errMsg(err), true);
     }
   });
-  setInterval(() => { if (announce) renderAnnounce(); render(); }, 30000); // also expires Undo buttons
+  setInterval(() => announce && renderAnnounce(), 60000);
 
   // ---------- Storage ----------
   function localStore() {
@@ -749,7 +699,6 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
     render();
     const cfg = window.FIREBASE_CONFIG;
     if (!window.firebase || !cfg || !cfg.projectId || /^REPLACE/.test(cfg.projectId)) {
-      isAdmin = true; // on-device mode has nothing to protect
       store = localStore();
       setSync("local", "Not connected to Firebase · this device only");
       renderAnnounce();
@@ -759,18 +708,12 @@ input, select, textarea { font-size: 16px !important; } /* below 16px iOS zooms 
     const db = firebase.database();
     store = {
       addPlayer: p => db.ref("players").push(p),
-      addMatch: m => db.ref("matches").push({ ...m, at: firebase.database.ServerValue.TIMESTAMP }),
+      addMatch: m => db.ref("matches").push(m),
       deleteMatch: id => db.ref("matches/" + id).remove(),
       renamePlayer: (id, name) => db.ref(`players/${id}/name`).set(name),
       setRetired: (id, on) => on ? db.ref(`players/${id}/retired`).set(true) : db.ref(`players/${id}/retired`).remove(),
       removePlayer: id => db.ref("players/" + id).remove(),
     };
-    const ADMIN_EMAIL = window.ARENA_ADMIN_EMAIL;
-    if (firebase.auth && ADMIN_EMAIL) {
-      const auth = firebase.auth();
-      adminApi = { signIn: pw => auth.signInWithEmailAndPassword(ADMIN_EMAIL, pw), signOut: () => auth.signOut() };
-      auth.onAuthStateChanged(u => { isAdmin = !!(u && u.email === ADMIN_EMAIL); editingId = pendingRemove = null; render(); });
-    }
     const list = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
     const onErr = () => setSync("", "Can't read results – check the database rules");
     store.announce = () => db.ref("announce/requestedAt").set(firebase.database.ServerValue.TIMESTAMP);

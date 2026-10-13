@@ -3,7 +3,7 @@
     "players": {
       ".read": true,
       "$id": {
-        ".write": "!data.exists() || (auth != null && auth.token.email == 'admin@srl-pingpongarena.app')",
+        ".write": true,
         ".validate": "newData.hasChildren(['name', 'createdAt'])",
         "name": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 32"
@@ -22,7 +22,7 @@
     "matches": {
       ".read": true,
       "$id": {
-        ".write": "(!data.exists() && newData.exists()) || (data.exists() && !newData.exists() && (now - data.child('at').val() < 120000 || (auth != null && auth.token.email == 'admin@srl-pingpongarena.app')))",
+        ".write": "(!data.exists() && newData.exists()) || !newData.exists()",
         ".validate": "newData.hasChildren(['winner', 'loser', 'at']) && newData.child('winner').val() != newData.child('loser').val() && root.child('players').child(newData.child('winner').val()).exists() && root.child('players').child(newData.child('loser').val()).exists() && (newData.hasChildren(['winnerScore', 'loserScore']) || (!newData.hasChild('winnerScore') && !newData.hasChild('loserScore'))) && (newData.hasChildren(['winner2', 'loser2']) || (!newData.hasChild('winner2') && !newData.hasChild('loser2')))",
         "winner": {
           ".validate": "newData.isString()"
@@ -31,7 +31,7 @@
           ".validate": "newData.isString()"
         },
         "at": {
-          ".validate": "newData.isNumber() && newData.val() == now"
+          ".validate": "newData.isNumber()"
         },
         "winnerScore": {
           ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99 && newData.val() > newData.parent().child('loserScore').val()"

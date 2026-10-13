@@ -1,0 +1,55 @@
+name: Arena
+
+# Records results submitted as GitHub issues into data.json, then deploys the site to GitHub Pages.
+on:
+  issues:
+    types: [opened]
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+jobs:
+  record:
+    if: github.event_name == 'issues' && contains(github.event.issue.body, '<!-- arena:')
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.apply.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - id: apply
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = require('./.github/scripts/record.js');
+            await run({ github, context, core, exec });
+
+  deploy:
+    needs: record
+    if: >-
+      always() &&
+      ((github.event_name == 'issues' && needs.record.outputs.changed == 'true') ||
+       (github.event_name != 'issues' && github.ref_name == github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

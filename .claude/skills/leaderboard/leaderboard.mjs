@@ -32,6 +32,19 @@ const recent = matches.slice(-recentN).reverse().map(m => ({
   score: m.winnerScore != null ? `${m.winnerScore}-${m.loserScore}` : null, at: new Date(m.at).toISOString(),
 }));
 
+if (args.includes("--slack")) {
+  // Slack mrkdwn message for the Incoming Webhook.
+  const site = "https://chomeed.github.io/srl_pingpongarena/";
+  const medal = r => ["🥇", "🥈", "🥉"][r - 1] || `${r}.`;
+  const lines = ladder.length
+    ? ladder.map(p => `${medal(p.rank)} *${p.name}*${p.provisional ? " _(P)_" : ""} · ${p.elo} · ${p.wins}–${p.losses}`)
+    : ["No players on the ladder yet."];
+  let text = `🏓 *SRL PingpongArena ladder* (${matches.length} matches)\n` + lines.join("\n");
+  if (recentN && recent.length) text += "\n\n*Recent:* " + recent.map(m => `${m.winner} beat ${m.loser}${m.score ? ` ${m.score}` : ""}`).join(" · ");
+  text += `\n<${site}|Log a match>`;
+  console.log(JSON.stringify({ text }));
+  process.exit(0);
+}
 if (asJson) { console.log(JSON.stringify({ ladder, recent: recentN ? recent : undefined, matches: matches.length }, null, 2)); process.exit(0); }
 if (!ladder.length) { console.log("No players on the ladder yet."); process.exit(0); }
 const w = Math.max(6, ...ladder.map(p => p.name.length));

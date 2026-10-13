@@ -1,0 +1,35 @@
+name: Slack leaderboard
+
+# Posts the ladder to Slack every Monday at 08:50 Singapore time (00:50 UTC), or on demand from the Actions tab.
+# Needs the repository secret SLACK_WEBHOOK_URL (a Slack Incoming Webhook for the channel).
+# Without it, the ladder is still shown in the run's summary.
+on:
+  schedule:
+    - cron: "50 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build ladder
+        run: |
+          node .claude/skills/leaderboard/leaderboard.mjs --recent 5 | tee ladder.txt
+          node .claude/skills/leaderboard/leaderboard.mjs --slack --recent 3 > slack.json
+          { echo '```'; cat ladder.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Post to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::notice::SLACK_WEBHOOK_URL is not set, so nothing was posted. The ladder is in this run's summary."
+            exit 0
+          fi
+          curl -sSf -X POST -H 'Content-Type: application/json' --data @slack.json "$SLACK_WEBHOOK_URL"

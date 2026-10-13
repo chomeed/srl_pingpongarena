@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Build ladder
         run: |
           node .claude/skills/leaderboard/leaderboard.mjs --recent 5 | tee ladder.txt

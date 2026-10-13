@@ -47,12 +47,12 @@ if (args.includes("--slack")) {
 }
 if (asJson) { console.log(JSON.stringify({ ladder, recent: recentN ? recent : undefined, matches: matches.length }, null, 2)); process.exit(0); }
 if (!ladder.length) { console.log("No players on the ladder yet."); process.exit(0); }
-const w = Math.max(6, ...ladder.map(p => p.name.length));
+const w = Math.max(6, ...ladder.map(p => p.name.length + 1));
 console.log(`SRL PingpongArena · ${ladder.length} players · ${matches.length} matches\n`);
 console.log(`${"#".padStart(2)}  ${"Player".padEnd(w)}  ${"Elo".padStart(4)}  ${"W-L".padStart(5)}  Last 5`);
 for (const p of ladder) console.log(`${String(p.rank).padStart(2)}  ${(p.name + (p.provisional ? "*" : "")).padEnd(w)}  ${String(p.elo).padStart(4)}  ${`${p.wins}-${p.losses}`.padStart(5)}  ${p.last5}`);
 console.log("\n* provisional (fewer than 5 games)");
-if (recentN) {
+if (recentN && recent.length) {
   console.log("\nRecent matches:");
   for (const m of recent) console.log(`  ${m.winner} beat ${m.loser}${m.score ? ` ${m.score}` : ""} (±${m.delta}) · ${m.at.slice(0, 16).replace("T", " ")} UTC`);
 }
